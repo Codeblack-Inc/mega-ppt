@@ -1,5 +1,60 @@
-<html><head><meta charset="utf-8"><style>*{margin:0}body{width:100vw;height:100vh;background:radial-gradient(circle at 70% 40%,#2a4bb8 0,#132156 38%,#070d22 75%);overflow:hidden}</style></head><body>
-<svg width="100%" height="100%" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice"><defs><radialGradient id="n"><stop offset="0" stop-color="#9db6ff"/><stop offset="1" stop-color="#9db6ff" stop-opacity="0"/></radialGradient></defs><g id="L" stroke="#7fa2ff" stroke-opacity=".28" stroke-width="1.2"></g><g id="N"></g></svg>
-<script>let s=7;const r=()=>(s=(s*9301+49297)%233280)/233280;const P=[];for(let i=0;i<70;i++)P.push([200+r()*1400,60+r()*800,1+r()*3]);const L=document.getElementById('L'),N=document.getElementById('N');
-P.forEach((a,i)=>P.slice(i+1).forEach(b=>{const d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(d<190){const l=document.createElementNS('http://www.w3.org/2000/svg','line');l.setAttribute('x1',a[0]);l.setAttribute('y1',a[1]);l.setAttribute('x2',b[0]);l.setAttribute('y2',b[1]);L.appendChild(l)}}));
-P.forEach(p=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',p[0]);c.setAttribute('cy',p[1]);c.setAttribute('r',p[2]*6);c.setAttribute('fill','url(#n)');N.appendChild(c);const d=document.createElementNS('http://www.w3.org/2000/svg','circle');d.setAttribute('cx',p[0]);d.setAttribute('cy',p[1]);d.setAttribute('r',p[2]);d.setAttribute('fill','#dbe5ff');N.appendChild(d)})</script></body></html>
+<html><head><meta charset="utf-8"><style>
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:2400px;height:1350px;overflow:hidden;background:#17152B;font-family:Pretendard,"Apple SD Gothic Neo",sans-serif;color:#77758A;-webkit-font-smoothing:antialiased;
+display:grid;grid-template-columns:repeat(4,415px) 350px;grid-template-rows:1258px;gap:0 85px;padding:46px 25px}
+.c{display:flex;flex-direction:column;justify-content:space-between;gap:22px;overflow:hidden;height:1258px}
+.b{border-top:1px solid #34324A;padding-top:14px}
+.h{font-size:16px;font-weight:700;color:#8E8B9F;letter-spacing:.02em;margin-bottom:8px;display:flex;justify-content:space-between}
+.h span{font-weight:500;color:#5D5B6B}
+.s{display:grid;grid-template-columns:32px 1fr auto;gap:10px;align-items:baseline;font-size:20px;line-height:1.45;padding:5px 0}
+.s i{font-style:normal;color:#5D5B6B;font-weight:700;font-size:16px}
+.m{font-size:13px;font-weight:700;color:#8E8B9F;border:1px solid #4A485C;padding:2px 7px;white-space:nowrap}
+.hl{color:#DEABA1;border:1.5px solid #DEABA1;padding:9px 10px;margin:6px 0}
+.hl i,.hl .m{color:#DEABA1}.hl .m{border-color:#DEABA1}
+.sum{font-size:17px;color:#5D5B6B;padding-top:4px}
+</style></head><body>
+<script>
+const V = '검증 통과', S = '자기 검증';
+const B = [
+ ['질의 #KR-MATH-20417', '예산 8K', [['첫째항 a₁ = 1, 공차 d = 3 확인', V], ['제20항 a₂₀ = 3·20 − 2 = 58', V], ['합 S₂₀ = 20·(1 + 58)/2 = 590', V], ['대안 검산: 3·210 − 2·20 = 590 (일치)', S]], '사고 토큰 2,184 · 3.1초'],
+ ['질의 #GOV-10482', '민원 분류', [['신청 유형: 주정차 과태료 이의신청', ''], ['근거 조례 제12조 ②항 검색', V], ['제기 기한: 고지서 수령 후 60일 이내', V], ['답변 초안 · 필수 서류 3종 안내', '']], '사고 토큰 1,406 · 2.2초'],
+ ['질의 #EDU-3391', '중학 과학', [['같은 부피의 물과 식용유 중 무거운 것', ''], ['밀도 비교: 물 1.00 > 식용유 0.92 g/cm³', V], ['결론: 같은 부피면 물이 더 무겁다', V]], '사고 토큰 612 · 0.9초'],
+ ['질의 #KR-CODE-0775', '파이썬', [['주민 수 상위 3개 구를 출력하는 함수', ''], ['sorted(rows, key=lambda r: r[1])[-3:]', ''], ['테스트 5건 실행 → 5/5 통과', V], ['동률 처리 규칙을 주석으로 추가', S]], '사고 토큰 3,870 · 5.4초'],
+ ['검증기 로그', '배치 #4471', [['채점 16건 중 14건 통과', V], ['계산 오류 2건 → 3단계에서 탈락', ''], ['과정 보상 평균 0.91 · 최저 0.62', '']], '수학 검증기 v2.3 · 일치율 99.2%'],
+ ['질의 #GOV-11207', '복지 급여', [['가구원 4인, 월 소득인정액 입력', ''], ['기준 중위소득 50% 이하 여부 계산', V], ['결론: 교육급여 대상 → 신청 경로 안내', V]], '사고 토큰 1,952 · 2.7초'],
+ ['질의 #KR-MATH-20988', '확률', [['주사위 두 개의 눈의 합이 7일 확률', ''], ['경우의 수 6 / 36 = 1/6', V], ['여사건 검산: 1 − 30/36 = 1/6 (일치)', S]], '사고 토큰 874 · 1.2초'],
+ ['질의 #EDU-4120', '국어 문법', [['‘않다’와 ‘안 하다’ 띄어쓰기 규칙', ''], ['예문 3개에 규칙 적용 → 모두 일치', V], ['설명을 중학생 수준 어휘로 다시 씀', '']], '사고 토큰 1,033 · 1.5초'],
+ ['질의 #KR-MATH-31120', '예산 8K', [['정삼각형 높이 h = (√3/2)·6 = 3√3', V], ['내접원 반지름 r = h/3 = √3', V], ['대안 검산: S = 9√3, s = 9 → r = S/s = √3', V, 1], ['원의 넓이 = πr² = 3π', V]], '확신도 94% · 과정 보상 0.91'],
+ ['질의 #GOV-12930', '생활 법률', [['전세 계약 만료 2개월 전 통지 조건', ''], ['관련 규정 2건 교차 확인', V], ['예외 사항: 묵시적 갱신 시 해지 절차', '']], '사고 토큰 2,410 · 3.3초'],
+ ['질의 #KR-CODE-0912', 'SQL', [['기관별 월간 질의 수 집계 쿼리', ''], ['GROUP BY 기관, 월 · 결측 월 0 처리', V], ['샘플 DB 3종에서 결과 일치', V]], '사고 토큰 2,018 · 2.9초'],
+ ['질의 #EDU-5007', '고등 수학', [['함수 f(x) = x³ − 3x 의 극값', ''], ['f′(x) = 3x² − 3 = 0 → x = ±1', V], ['극댓값 2, 극솟값 −2', V], ['그래프 개형으로 부호 변화 검산', S]], '사고 토큰 1,688 · 2.4초'],
+ ['질의 #KR-MATH-21533', '기하', [['세 점 A(0, 0), B(4, 0), C(0, 3)', ''], ['빗변 BC = √(16 + 9) = 5', V], ['넓이 = 4·3/2 = 6, 외접원 반지름 = 5/2', V], ['헤론 공식 검산: s = 6 → √(6·2·3·1) = 6', S]], '사고 토큰 1,122 · 1.6초'],
+ ['질의 #GOV-13305', '세무', [['1세대 1주택 양도세 비과세 요건', ''], ['보유 2년 · 거주 2년 요건 확인', V], ['조정대상지역 취득 시점 조건 검토', V], ['예외: 일시적 2주택 3년 이내 처분', '']], '사고 토큰 2,655 · 3.6초'],
+ ['질의 #EDU-6218', '초등 수학', [['피자 3/4판을 3명이 똑같이 나눔', ''], ['3/4 ÷ 3 = 1/4', V], ['그림 모형으로 다시 확인 → 1/4판', S]], '사고 토큰 408 · 0.6초'],
+ ['질의 #KR-CODE-1044', '자바스크립트', [['"2026.09.25"를 요일로 변환', ''], ['new Date(2026, 8, 25).getDay() → 5', V], ['월 인덱스는 0부터 → 금요일', V]], '사고 토큰 956 · 1.3초'],
+ ['검증기 로그', '배치 #4472', [['채점 20건 중 19건 통과', V], ['단위 누락 1건 → 최종 단계에서 탈락', ''], ['과정 보상 평균 0.93 · 최저 0.71', '']], '수학 검증기 v2.3 · 일치율 99.4%'],
+ ['질의 #GOV-14081', '교통 행정', [['버스 노선 조정 민원 142건 분류', ''], ['배차 간격 61건 · 정류장 이전 48건', V], ['나머지 33건은 담당 부서로 이관', V]], '사고 토큰 3,112 · 4.4초'],
+ ['질의 #KR-MATH-22604', '미적분', [['∫ 2x·e^(x²) dx, 구간 [0, 1]', ''], ['치환 u = x² → ∫ eᵘ du, 구간 [0, 1]', V], ['= e − 1 ≈ 1.718', V], ['수치 적분 100구간으로 검산', S]], '사고 토큰 1,540 · 2.1초'],
+ ['질의 #EDU-7702', '영어 독해', [['지문 주제문 찾기 (5지선다)', ''], ['첫 문장과 마지막 문장의 대비 확인', ''], ['정답 ③ · 근거 문장 2개 표시', V]], '사고 토큰 1,284 · 1.8초'],
+ ['질의 #GOV-15526', '보건', [['예방접종 일정 문의 (생후 12개월)', ''], ['표준 접종 일정표 검색', V], ['MMR·수두 동시 접종 가능 안내', V]], '사고 토큰 890 · 1.2초'],
+ ['질의 #KR-CODE-1310', '파이썬', [['CSV 인코딩 오류(cp949) 원인 추정', ''], ["encoding='cp949'로 다시 읽기", V], ['깨진 행 3건만 따로 기록', S]], '사고 토큰 1,760 · 2.5초'],
+ ['질의 #KR-MATH-23377', '정수론', [['2²⁰²⁶을 7로 나눈 나머지', ''], ['2³ ≡ 1 (mod 7), 2026 = 3·675 + 1', V], ['나머지 2 · 작은 지수로 규칙 재확인', S]], '사고 토큰 1,015 · 1.4초'],
+ ['질의 #EDU-8045', '한국사', [['갑오개혁의 주요 내용 3가지', ''], ['과거제 폐지 · 신분제 철폐 · 은본위 화폐', V], ['교과서 서술 범위와 대조', V]], '사고 토큰 1,377 · 1.9초'],
+ ['검증기 로그', '배치 #4473', [['코드 채점 12건 중 11건 통과', V], ['시간 초과 1건 → 입력 10⁵에서 실패', ''], ['평균 실행 0.42초 · 테스트 60개', '']], '코드 검증기 v1.4 · 일치율 98.7%'],
+ ['질의 #GOV-16690', '민원 요약', [['상담 녹취 12분 → 요지 3문장', ''], ['요구 2건 · 기관 답변 1건 분리', V], ['개인정보 4건 자동 가림 처리', V]], '사고 토큰 2,230 · 3.0초'],];
+// columns take whole blocks only, each block once; the verified block (8) sits mid-height in the
+// middle column. Gutters fall at x 440-525 and 1940-2025 so crops at those edges cut no text.
+const order = [[1, 5, 10, 3, 7], [12, 6, 13, 4, 14], [2, 16, 8, 17, 15], [9, 18, 0, 19, 20], [11, 21, 22, 23, 24, 25]];
+const esc = t => t.replace(/</g, '&lt;'), used = new Set();
+const block = k => { const [q, tag, steps, sum] = B[k], d = document.createElement('div'); d.className = 'b';
+  d.innerHTML = `<div class="h">${q}<span>${tag}</span></div>` +
+    steps.map(([t, m, hl], i) => `<div class="s${hl ? ' hl' : ''}"><i>${String(i + 1).padStart(2, '0')}</i><div>${esc(t)}</div>${m ? `<span class="m">${m}</span>` : '<span></span>'}</div>`).join('') +
+    `<div class="sum">${sum}</div>`; return d; };
+for (const col of order) {
+  const c = document.createElement('div'); c.className = 'c'; document.body.appendChild(c);
+  const add = k => { if (used.has(k)) return; const d = block(k); c.appendChild(d);
+    if (c.scrollHeight > c.clientHeight) d.remove(); else used.add(k); };
+  col.forEach(add); B.forEach((_, k) => k !== 8 && add(k));
+}
+</script></body></html>

@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "skills/mega-ppt"
 sys.path.insert(0, str(ROOT / "scripts"))
-from build_deck import FULL, PANELS, WARN, build, fit_size  # noqa: E402
+from build_deck import FULL, PANELS, WARN, _fmt, _nice_min, build, fit_size, share  # noqa: E402
 from pptx import Presentation  # noqa: E402
 
 deck = json.loads((ROOT / "examples/sample.json").read_text(encoding="utf-8"))
@@ -40,4 +40,12 @@ with tempfile.TemporaryDirectory() as tmp:
 WARN.clear()
 assert fit_size("가" * 400, 12, 2, 0.5) == 8 and WARN
 assert fit_size("짧은 문장", 12, 4, 0.5) == 12
+# grow: short text in a roomy box grows to max_size; siblings share the smallest fitting size
+assert fit_size("짧은 문장", 11, 4, 2, max_size=13) == 13
+long_, short = ["가" * 60] * 4, ["가" * 10]
+alone = fit_size(long_, 11, 3, 3, bullets=True, max_size=13, quiet=True)
+assert share([(long_, 3, 3), (short, 3, 3)], 11, 13, bullets=True) == alone < 13
+# chart helpers: axis floor below the data, number formats
+assert _nice_min([-5, 3, 8]) < -5 and _nice_min([5, 5, 5]) < 5 and _nice_min([52, 71]) == 40
+assert (_fmt(0.1, "0.0%"), _fmt(5, '0"억"'), _fmt(1234.4, "#,##0")) == ("10.0%", "5억", "1,234")
 print("ok")
