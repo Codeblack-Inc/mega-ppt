@@ -3,10 +3,11 @@
 AI가 스토리라인을 설계하고, 레이아웃 카탈로그에서 슬라이드별 레이아웃을 골라, 편집 가능한 `.pptx`를 만드는 Claude Code / Codex 플러그인.
 
 - **스토리라인**: 피라미드 원칙 + 액션 타이틀
-- **레이아웃 카탈로그**: cover · section · bullets · two-column · kpi · chart · process · table · quote · closing
-- **디자인 시스템**: 중립색 + 강조색 1개, Pretendard, 테마 토큰으로 브랜드 적용
-- **차트**: 네이티브 PowerPoint 차트 (bar / hbar / stacked / line / pie) — 열어서 데이터 수정 가능
-- **시각 검수**: LibreOffice로 렌더링해 AI가 직접 보고 고침
+- **헤더 + 패널 격자**: 슬라이드마다 패널 13종(bullets · callout · table · chart · kpi · cards · process · timeline · cycle · stack · image · label · arrow)을 조합하므로 레이아웃이 고정되지 않는다
+- **한국식 장표 밀도**: 사업계획서·공공기관 보고서 수준(장당 300~800자)을 기준으로, 넘침과 빈 공간을 자동으로 감지해 경고한다
+- **디자인 시스템**: 중립색과 강조색 1개, Pretendard, 테마 토큰으로 브랜드를 적용한다
+- **편집 가능**: 표와 차트가 모두 PowerPoint 네이티브라서 열어서 바로 수정할 수 있다
+- **시각 검수**: LibreOffice로 렌더링한 이미지를 AI가 직접 보고 고친다
 
 ## 설치
 
@@ -46,10 +47,10 @@ uv run skills/mega-ppt/scripts/render.py sample.pptx
 .agents/plugins/         Codex 마켓플레이스
 skills/mega-ppt/
   SKILL.md               워크플로 (브리핑 → 스토리라인 → 레이아웃 → 빌드 → 검수)
-  references/            storyline.md · layouts.md · style-guide.md
+  references/            storyline.md · layouts.md(패널 카탈로그) · density.md · style-guide.md
   scripts/build_deck.py  deck.json → .pptx (레이아웃 엔진)
   scripts/render.py      .pptx → slide PNG
-  examples/sample.json   전 레이아웃 예시 덱
+  examples/sample.json   모든 패널을 쓰는 12장 예시 덱
 tests/test_build.py      스모크 테스트
 ```
 
