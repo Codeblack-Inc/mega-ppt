@@ -30,6 +30,10 @@ out = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "site")
 shutil.rmtree(out, ignore_errors=True)
 (out / "decks").mkdir(parents=True)
 deck = json.loads((SKILL / "examples/sample.json").read_text(encoding="utf-8"))
+extra = json.loads((Path(__file__).parent / "showcase.json").read_text(encoding="utf-8"))
+deck["slides"] = deck["slides"][:-1] + extra["slides"] + deck["slides"][-1:]  # closing last
+GROUPS = ["기본 구성", "요약·메시지", "근거·데이터", "전략·구조", "실행·일정", "조직·인력",
+          "효과·요약"]
 
 for key, t in THEMES.items():
     d = copy.deepcopy(deck)
@@ -64,10 +68,12 @@ for i, s in enumerate(deck["slides"], 1):
         "n": i,
         "name": g.get("name", f"Slide {i}"),
         "desc": g.get("desc", ""),
+        "group": g.get("group", "기타"),
         "kind": s.get("layout", "content"),
         "panels": sorted(set(panels(s))) if s.get("layout", "content") not in FULL else [],
         "json": pretty(spec),
     })
+slides.sort(key=lambda x: (GROUPS.index(x["group"]) if x["group"] in GROUPS else 99, x["n"]))
 data = {"themes": [{"key": k, "name": t["name"], "accent": t["theme"].get("accent", "#2152E0")}
                    for k, t in THEMES.items()], "slides": slides}
 (out / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")

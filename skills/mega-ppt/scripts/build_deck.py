@@ -140,13 +140,13 @@ def text_height(content, size, w, bullets=False, bold=False, line=1.15, gap=4):
 
 
 def fit_size(content, size, w, h, bullets=False, bold=False, min_size=MIN_SIZE, line=1.15,
-             gap=4, name="text"):
+             gap=4, name="text", underfill=True):
     while size > min_size and text_height(content, size, w, bullets, bold, line, gap) > h:
         size -= 0.5
     need = text_height(content, size, w, bullets, bold, line, gap)
     if need > h * 1.04:
         warn(f"{name!r} overflows its box even at {size}pt — shorten the text")
-    elif h > 1.5 and need < h * 0.3:
+    elif underfill and h > 1.5 and need < h * 0.3:
         warn(f"{name!r} fills only {need / h:.0%} of its box — add content or lower the row 'h'")
     return size
 
@@ -181,7 +181,8 @@ def text(s, box, content, size=BODY_SIZE, color="text", bold=False, align="l", a
     """Text box with **emphasis** markup, hanging bullets ('- ' = level 2) and shrink-to-fit."""
     x, y, w, h = box
     if fit:
-        size = fit_size(content, size, w, h, bullets, bold, min_size, line, gap, name)
+        size = fit_size(content, size, w, h, bullets, bold, min_size, line, gap, name,
+                        underfill=anchor == "t")
     tb = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = tb.text_frame
     tf.word_wrap = wrap
@@ -222,12 +223,21 @@ def rect(s, x, y, w, h, fill=None, line=None, shape=MSO_SHAPE.RECTANGLE, lw=0.75
     return sh
 
 
-def hline(s, x, y, w, color="rule", lw=0.75):
-    c = s.shapes.add_connector(1, Inches(x), Inches(y), Inches(x + w), Inches(y))
+def line(s, x1, y1, x2, y2, color="rule", lw=0.75, arrow=False, dash=False):
+    c = s.shapes.add_connector(1, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
     c._element.remove(c._element.find(qn("p:style")))
     c.line.color.rgb = rgb(color)
     c.line.width = Pt(lw)
+    if dash:
+        c.line.dash_style = 4
+    if arrow:
+        etree.SubElement(c.line._get_or_add_ln(), qn("a:tailEnd"), type="triangle", w="med",
+                         len="med")
     return c
+
+
+def hline(s, x, y, w, color="rule", lw=0.75):
+    return line(s, x, y, x + w, y, color, lw)
 
 
 def shape_text(sh, t, size, color, bold=True, align="c", box=None):
@@ -307,6 +317,7 @@ def p_table(s, b, p):
     for i, cw in enumerate(cws):
         tbl.columns[i].width = Inches(cw)
     hl = p.get("highlight")
+    total = p.get("total", False)
     body = data[1:] if cols else data
     left = [any(len(plain(r[c])) > 14 for r in body if c < len(r)) for c in range(nc)]
     for r, row in enumerate(data):
@@ -317,10 +328,11 @@ def p_table(s, b, p):
             val = str(row[c]) if c < len(row) else ""
             cell = tbl.cell(r, c)
             rh_cell = rowhead and c == 0 and not head
-            fill = ("ink" if head else tint("accent", 0.9) if is_hl
-                    else "soft" if rh_cell else "paper")
             last = r == nr - 1
-            _cell_borders(cell, T=("ink" if r == 0 and not cols else None),
+            is_total = total and last
+            fill = ("ink" if head else tint("accent", 0.9) if is_hl
+                    else "soft" if rh_cell or is_total else "paper")
+            _cell_borders(cell, T=("ink" if (r == 0 and not cols) or is_total else None),
                           B=("ink" if last else "rule"),
                           B_w=1.25 if last else 0.5,
                           R=("rule" if rh_cell else None))
@@ -334,13 +346,27 @@ def p_table(s, b, p):
             para = tf.paragraphs[0]
             para.alignment = (PP_ALIGN.LEFT if (rowhead and c == 0) or (left[c] and not head)
                               else PP_ALIGN.CENTER)
-            color = "paper" if head else "accent" if is_hl else "ink" if rh_cell else "text"
+            color = ("paper" if head else "accent" if is_hl
+                     else "ink" if rh_cell or is_total else "text")
+            mark = MARKS.get(plain(val).strip()) if not head else None
+            if mark:
+                para.alignment = PP_ALIGN.CENTER
+                run = para.add_run()
+                run.text = plain(val).strip()
+                _set_font(run, size + 8, mark, False)
+                continue
             for k, part in enumerate(EMPH.split(val)):
                 if part:
                     run = para.add_run()
                     run.text = part
                     _set_font(run, size, "accent" if k % 2 and not head else color,
-                              head or rh_cell or is_hl or bool(k % 2))
+                              head or rh_cell or is_hl or is_total or bool(k % 2))
+    for r1, c1, r2, c2 in p.get("merge", []):  # data coords, header row = 0 when columns given
+        tbl.cell(r1, c1).merge(tbl.cell(r2, c2))
+
+
+MARKS = {"●": "accent", "◐": "accent", "○": "muted", "✓": "accent", "✗": "muted",
+         "△": "muted", "O": "accent", "X": "muted"}
 
 
 def _cell_borders(cell, L=None, R=None, T=None, B=None, B_w=0.5):
@@ -374,6 +400,8 @@ def p_chart(s, b, p):
         text(s, (x, y, w, 0.2), f"(단위: {p['unit']})", 8, "muted", align="r", fit=False)
         y, h = y + 0.2, h - 0.2
     kind = p.get("kind", "bar")
+    if kind == "waterfall":
+        return _waterfall(s, (x, y, w, h), p)
     data = CategoryChartData()
     data.categories = p["categories"]
     for ser in p["series"]:
@@ -453,6 +481,54 @@ def p_chart(s, b, p):
         if p.get("number_format"):
             plot.data_labels.number_format = p["number_format"]
             plot.data_labels.number_format_is_linked = False
+
+
+def _waterfall(s, b, p):
+    """Bridge chart as stacked columns with an invisible base. p["totals"] = absolute bars."""
+    x, y, w, h = b
+    vals, totals = p["series"][0]["values"], set(p.get("totals", []))
+    base, up, down, run = [], [], [], 0
+    for i, v in enumerate(vals):
+        if i in totals:
+            base.append(0), up.append(v), down.append(0)
+            run = v
+        elif v >= 0:
+            base.append(run), up.append(v), down.append(0)
+            run += v
+        else:
+            run += v
+            base.append(run), up.append(0), down.append(-v)
+    data = CategoryChartData()
+    data.categories = p["categories"]
+    for name, vs in (("base", base), ("증가", up), ("감소", down)):
+        data.add_series(name, vs)
+    ch = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_STACKED, Inches(x), Inches(y), Inches(w),
+                            Inches(h), data).chart
+    ch.font.size, ch.font.name = Pt(9), T["font"]
+    ch.font.color.rgb = rgb("muted")
+    ch.has_title = ch.has_legend = False
+    plot = ch.plots[0]
+    plot.gap_width, plot.overlap = 50, 100
+    ch.value_axis.visible = False
+    ch.value_axis.has_major_gridlines = False
+    ch.category_axis.format.line.color.rgb = rgb("rule")
+    ch.category_axis.tick_labels.font.size = Pt(9)
+    nf = p.get("number_format", "#,##0")
+    b_ser, u_ser, d_ser = plot.series
+    b_ser.format.fill.background()
+    for ser, c, fmt in ((u_ser, tint("ink", 0.4), f"{nf};-{nf};;"),
+                        (d_ser, "#E07A6E", f'"-"{nf};;;')):
+        ser.format.fill.solid()
+        ser.format.fill.fore_color.rgb = rgb(c)
+        dl = ser.data_labels
+        dl.show_value = True
+        dl.number_format, dl.number_format_is_linked = fmt, False
+        dl.font.size, dl.font.bold = Pt(9), True
+        dl.font.color.rgb = rgb("text")
+    for i in totals:
+        pt = u_ser.points[i]
+        pt.format.fill.solid()
+        pt.format.fill.fore_color.rgb = rgb("accent")
 
 
 def p_kpi(s, b, p):
@@ -646,10 +722,405 @@ def p_arrow(s, b, p):
     return a
 
 
+def _rotated_label(s, cx, cy, length, t):
+    tb = text(s, (cx - length / 2, cy - 0.13, length, 0.26), t, 9.5, "muted", bold=True,
+              align="c", anchor="m", fit=False)
+    tb.rotation = 270
+
+
+def p_matrix(s, b, p):
+    """2×2: quadrants (SWOT 등) or positioning map with points."""
+    x, y, w, h = b
+    ax = 0.35 if p.get("y_label") else 0
+    ay = 0.32 if p.get("x_label") else 0
+    gx, gy, gw, gh = x + ax, y, w - ax, h - ay
+    if p.get("y_label"):
+        _rotated_label(s, x + 0.15, gy + gh / 2, gh, p["y_label"])
+    if p.get("x_label"):
+        text(s, (gx, y + h - 0.26, gw, 0.26), p["x_label"], 9.5, "muted", bold=True, align="c",
+             anchor="m", fit=False)
+    if p.get("points"):
+        return _positioning(s, (gx, gy, gw, gh), p)
+    g = 0.12
+    qw, qh = (gw - g) / 2, (gh - g) / 2
+    letters = p.get("letters")
+    for i, q in enumerate(p["quadrants"][:4]):
+        qx, qy = gx + (i % 2) * (qw + g), gy + (i // 2) * (qh + g)
+        hl = p.get("highlight") == i
+        rect(s, qx, qy, qw, qh, tint("accent", 0.92) if hl else "soft")
+        if hl:
+            rect(s, qx, qy, qw, 0.05, "accent")
+        tx = qx + 0.18
+        if letters:
+            lb = rect(s, qx + 0.15, qy + 0.15, 0.46, 0.46, "accent" if hl else "ink")
+            shape_text(lb, letters[i], 18, "paper")
+            tx = qx + 0.75
+        text(s, (tx, qy + 0.15, qx + qw - tx - 0.15, 0.46), q["title"], 12,
+             "accent" if hl else "ink", bold=True, anchor="m", name="quadrant title")
+        body = q.get("items") or q.get("text")
+        if body:
+            text(s, (qx + 0.2, qy + 0.75, qw - 0.4, qh - 0.9), body, p.get("size", 10),
+                 bullets="items" in q, gap=3, name=q["title"])
+
+
+def _positioning(s, b, p):
+    x, y, w, h = b
+    hl = p.get("highlight")
+    for i in range(4):
+        rect(s, x + (i % 2) * w / 2, y + (i // 2) * h / 2, w / 2, h / 2,
+             tint("accent", 0.92) if hl == i else "soft" if i in (0, 3) else "paper")
+    line(s, x + w / 2, y, x + w / 2, y + h, "rule", 1, dash=True)
+    line(s, x, y + h / 2, x + w, y + h / 2, "rule", 1, dash=True)
+    line(s, x, y + h, x + w, y + h, "muted", 1.25, arrow=True)
+    line(s, x, y + h, x, y, "muted", 1.25, arrow=True)
+    for i, q in enumerate(p.get("quadrant_labels", [])[:4]):
+        qx, qy = x + (i % 2) * w / 2, y + (i // 2) * h / 2
+        text(s, (qx + 0.12, qy + 0.08, w / 2 - 0.24, 0.26), q, 9.5,
+             "accent" if hl == i else "muted", bold=True, align="r" if i % 2 else "l",
+             fit=False)
+    for pt in p["points"]:
+        on = pt.get("highlight")
+        r = 0.13 if on else 0.09
+        cx, cy = x + pt["x"] * w, y + (1 - pt["y"]) * h
+        rect(s, cx - r, cy - r, 2 * r, 2 * r, "accent" if on else tint("ink", 0.35),
+             shape=MSO_SHAPE.OVAL)
+        right = pt["x"] < 0.75
+        lx = cx + r + 0.06 if right else cx - r - 0.06 - 1.9
+        text(s, (lx, cy - 0.13, 1.9, 0.26), pt["label"], 10 if on else 9.5,
+             "accent" if on else "ink", bold=bool(on), align="l" if right else "r", anchor="m",
+             fit=False)
+
+
+def p_pyramid(s, b, p, funnel=False):
+    x, y, w, h = b
+    levels = p["levels"]
+    n = len(levels)
+    has_text = any(lv.get("text") for lv in levels)
+    sw = w * 0.5 if has_text else w
+    g = 0.06
+    lh = (h - g * (n - 1)) / n
+    for i, lv in enumerate(levels):
+        t = i / (n - 1) if n > 1 else 1
+        frac = 1 - 0.6 * t if funnel else 0.32 + 0.68 * t
+        bw = sw * frac
+        bx, by = x + (sw - bw) / 2, y + i * (lh + g)
+        hl = p.get("highlight") == i
+        shade = min(0.7, (i if not funnel else i) * 0.16)
+        fill = "accent" if hl else tint("ink", shade)
+        sh = rect(s, bx, by, bw, lh, fill)
+        label = lv["title"] + (f"\n{lv['value']}" if lv.get("value") else "")
+        shape_text(sh, label, 11.5, "paper" if hl or shade < 0.45 else "ink",
+                   box=(bw - 0.1, lh - 0.04))
+        if lv.get("text"):
+            line(s, bx + bw + 0.06, by + lh / 2, x + sw + 0.18, by + lh / 2, "rule", 0.75,
+                 dash=True)
+            text(s, (x + sw + 0.28, by, w - sw - 0.28, lh), lv["text"], 10, anchor="m",
+                 name=lv["title"])
+
+
+def p_funnel(s, b, p):
+    p_pyramid(s, b, p, funnel=True)
+
+
+def _node(s, x, y, w, h, d, fill, fg, border=None):
+    rect(s, x, y, w, h, fill, border)
+    name, role = (d, None) if isinstance(d, str) else (d["name"], d.get("role"))
+    if role:
+        text(s, (x + 0.06, y + 0.04, w - 0.12, h * 0.55 - 0.04), name, 10.5, fg, bold=True,
+             align="c", anchor="b", min_size=7.5, line=1.0, name="node")
+        text(s, (x + 0.06, y + h * 0.55, w - 0.12, h * 0.45 - 0.04), role, 8.5,
+             fg if fg != "ink" else "muted", align="c", anchor="t", min_size=7, line=1.0,
+             name="node role")
+    else:
+        text(s, (x + 0.06, y, w - 0.12, h), name, 10.5, fg, bold=True, align="c", anchor="m",
+             min_size=7.5, line=1.0, name="node")
+
+
+def p_tree(s, b, p):
+    """Org chart / 추진체계: root → children (row) → grandchildren (stacked list)."""
+    x, y, w, h = b
+    root = p["root"]
+    kids = root.get("children", [])
+    nh = p.get("node_h", 0.58)
+    rw = min(2.8, w * 0.3)
+    _node(s, x + (w - rw) / 2, y, rw, nh, root, "ink", "paper")
+    for j, sd in enumerate(root.get("side", [])):  # advisory boxes beside the root
+        sx = x + (w + rw) / 2 + 0.5 + j * (min(2.2, w * 0.2) + 0.15)
+        sww = min(2.2, w * 0.2)
+        line(s, x + (w + rw) / 2, y + nh / 2, sx, y + nh / 2, "muted", 1, dash=True)
+        _node(s, sx, y + 0.06, sww, nh - 0.12, sd, "paper", "ink", "muted")
+    if not kids:
+        return
+    n = len(kids)
+    g = 0.15
+    cw = (w - g * (n - 1)) / n
+    bus = y + nh + 0.22
+    ky = y + nh + 0.44
+    cxs = [x + i * (cw + g) + cw / 2 for i in range(n)]
+    line(s, x + w / 2, y + nh, x + w / 2, bus, "ink", 1)
+    if n > 1:
+        line(s, cxs[0], bus, cxs[-1], bus, "ink", 1)
+    for i, k in enumerate(kids):
+        kx = x + i * (cw + g)
+        hl = p.get("highlight") == i
+        line(s, cxs[i], bus, cxs[i], ky, "ink", 1)
+        _node(s, kx, ky, cw, nh, k, "accent" if hl else tint("ink", 0.12), "paper")
+        gk = [] if isinstance(k, str) else k.get("children", [])
+        if gk:
+            ly = ky + nh + 0.12
+            gg = 0.07
+            each = min(0.46, (y + h - ly - gg * (len(gk) - 1)) / len(gk))
+            for j, c in enumerate(gk):
+                cy = ly + j * (each + gg)
+                line(s, kx + 0.08, cy + each / 2, kx + 0.2, cy + each / 2, "rule", 1)
+                _node(s, kx + 0.2, cy, cw - 0.2, each, c, "paper", "ink",
+                      "accent" if hl else "rule")
+            line(s, kx + 0.08, ky + nh, kx + 0.08, ly + (len(gk) - 1) * (each + gg) + each / 2,
+                 "rule", 1)
+        elif not isinstance(k, str) and k.get("items"):
+            text(s, (kx + 0.05, ky + nh + 0.12, cw - 0.1, y + h - ky - nh - 0.12), k["items"],
+                 9.5, bullets=True, gap=2, name=k["name"])
+
+
+def p_house(s, b, p):
+    """전략 체계도: vision roof → goals → pillars → foundation."""
+    x, y, w, h = b
+    rh = 0.8
+    roof = rect(s, x, y, w, rh, "ink", shape=MSO_SHAPE.TRAPEZOID)
+    roof.adjustments[0] = w * 0.1 / rh
+    text(s, (x + w * 0.15, y + 0.08, w * 0.7, 0.22), p.get("vision_label", "VISION"), 9,
+         "#9DB6FF", bold=True, align="c", fit=False)
+    text(s, (x + w * 0.15, y + 0.28, w * 0.7, rh - 0.32), p["vision"], 14, "paper", bold=True,
+         align="c", anchor="m", min_size=10, emph="#9DB6FF", name="vision")
+    cy = y + rh + 0.1
+    goals = p.get("goals", [])
+    if goals:
+        gh = 0.5
+        rect(s, x, cy, 1.1, gh, "accent")
+        text(s, (x, cy, 1.1, gh), p.get("goals_label", "목표"), 10.5, "paper", bold=True,
+             align="c", anchor="m", fit=False)
+        gw = (w - 1.2 - 0.08 * (len(goals) - 1)) / len(goals)
+        for i, gl in enumerate(goals):
+            gx = x + 1.2 + i * (gw + 0.08)
+            rect(s, gx, cy, gw, gh, tint("accent", 0.9))
+            text(s, (gx + 0.1, cy, gw - 0.2, gh), gl, 10.5, "ink", bold=True, align="c",
+                 anchor="m", min_size=8, name="goal")
+        cy += gh + 0.1
+    base = p.get("base", [])
+    bh = 0.4
+    ph = y + h - cy - (len(base) * (bh + 0.06) + 0.04 if base else 0)
+    pillars = p["pillars"]
+    n = len(pillars)
+    pg = 0.12
+    pw = (w - pg * (n - 1)) / n
+    for i, pl in enumerate(pillars):
+        px = x + i * (pw + pg)
+        hl = p.get("highlight") == i
+        rect(s, px, cy, pw, ph, "soft")
+        rect(s, px, cy, pw, 0.44, "accent" if hl else tint("ink", 0.12))
+        text(s, (px + 0.08, cy, pw - 0.16, 0.44), pl["title"], 11, "paper", bold=True,
+             align="c", anchor="m", min_size=8, name="pillar")
+        text(s, (px + 0.14, cy + 0.56, pw - 0.28, ph - 0.66), pl["items"], p.get("size", 9.5),
+             bullets=True, gap=2, name=pl["title"])
+    by = cy + ph + 0.06
+    for i, bs in enumerate(base):
+        rect(s, x, by, w, bh, tint("ink", 0.8) if i == 0 else "soft")
+        text(s, (x + 0.2, by, w - 0.4, bh), bs, 10.5, "ink", bold=True, align="c", anchor="m",
+             min_size=8, name="base")
+        by += bh + 0.06
+
+
+def p_milestones(s, b, p):
+    x, y, w, h = b
+    ev = p["events"]
+    n = len(ev)
+    if h > 3.6:  # a taller band only spreads the labels apart; centre a fixed band instead
+        y, h = y + (h - 3.6) / 2, 3.6
+    my = y + h / 2
+    line(s, x, my, x + w, my, "ink", 1.5)
+    seg = w / n
+    tw = min(2 * seg - 0.2, 2.6)
+    for i, e in enumerate(ev):
+        cx = x + seg * i + seg / 2
+        hl = e.get("highlight")
+        r = 0.12 if hl else 0.085
+        rect(s, cx - r, my - r, 2 * r, 2 * r, "accent" if hl else "paper", "accent",
+             MSO_SHAPE.OVAL, lw=1.75)
+        up = i % 2 == 0
+        line(s, cx, my - r if up else my + r, cx, my - 0.38 if up else my + 0.38, "rule", 1)
+        bh = h / 2 - 0.45
+        tx = cx - tw / 2
+        body = e.get("text")
+        th = text_height(e["title"], 11, tw, bold=True, line=1.05)
+        bth = min(text_height(body, 9.5, tw), bh - th - 0.35) if body else 0
+        total = 0.3 + th + (bth + 0.05 if body else 0)
+        ty = (my - 0.42 - total) if up else my + 0.42
+        text(s, (tx, ty, tw, 0.28), e["date"], 12, "accent", bold=True, align="c", fit=False)
+        text(s, (tx, ty + 0.3, tw, th + 0.02), e["title"], 11, "ink", bold=True, align="c",
+             line=1.05, name="milestone")
+        if body:
+            text(s, (tx, ty + 0.3 + th + 0.05, tw, bth + 0.02), body, 9.5, "muted", align="c",
+                 name="milestone text")
+
+
+def p_profiles(s, b, p):
+    x, y, w, h = b
+    people = p["people"]
+    ncol = p.get("cols", len(people))
+    nrow = math.ceil(len(people) / ncol)
+    g = 0.15
+    cw, chh = (w - g * (ncol - 1)) / ncol, (h - g * (nrow - 1)) / nrow
+    for i, pr in enumerate(people):
+        cx, cy = x + (i % ncol) * (cw + g), y + (i // ncol) * (chh + g)
+        hl = p.get("highlight") == i
+        rect(s, cx, cy, cw, chh, "paper", "accent" if hl else "rule", lw=1 if hl else 0.75)
+        d = min(0.85, chh * 0.35, cw * 0.28)
+        av = rect(s, cx + 0.16, cy + 0.16, d, d, tint("accent", 0.85) if hl else "soft",
+                  shape=MSO_SHAPE.OVAL)
+        shape_text(av, plain(pr["name"])[0], d * 30, "accent" if hl else "muted")
+        tx = cx + 0.16 + d + 0.14
+        tw = cx + cw - tx - 0.12
+        text(s, (tx, cy + 0.14, tw, 0.3), pr["name"], 12.5, "ink", bold=True, anchor="m",
+             min_size=9, name="name")
+        text(s, (tx, cy + 0.44, tw, 0.24), pr.get("role", ""), 10, "accent", bold=True,
+             min_size=8, name="role")
+        if pr.get("org"):
+            text(s, (tx, cy + 0.68, tw, 0.24), pr["org"], 9, "muted", min_size=7.5, name="org")
+        top = cy + 0.16 + max(d, 0.78) + 0.12
+        hline(s, cx + 0.16, top, cw - 0.32)
+        if pr.get("items"):
+            text(s, (cx + 0.16, top + 0.1, cw - 0.32, cy + chh - top - 0.2), pr["items"],
+                 p.get("size", 9.5), bullets=True, gap=2, name=pr["name"])
+
+
+def p_numbered(s, b, p):
+    x, y, w, h = b
+    items = p["items"]
+    ncol = p.get("cols", 1)
+    per = math.ceil(len(items) / ncol)
+    g = 0.3
+    cw = (w - g * (ncol - 1)) / ncol
+    rh = h / per
+    for i, it in enumerate(items):
+        cx, cy = x + (i // per) * (cw + g), y + (i % per) * rh
+        hl = p.get("highlight") == i
+        text(s, (cx, cy + 0.04, 0.75, 0.5), f"{i + 1:02d}", 24, "accent" if hl else
+             tint("ink", 0.55), bold=True, fit=False)
+        text(s, (cx + 0.8, cy + 0.08, cw - 0.8, 0.32), it["title"], 12.5,
+             "accent" if hl else "ink", bold=True, anchor="m", min_size=9, name="item title")
+        if it.get("text"):
+            text(s, (cx + 0.8, cy + 0.44, cw - 0.8, rh - 0.54), it["text"], 10, "muted",
+                 name=it["title"])
+        if i % per != per - 1 and i != len(items) - 1:
+            hline(s, cx, cy + rh - 0.04, cw)
+
+
+def p_flow(s, b, p):
+    """Left→right nodes with labelled arrows (BM, 서비스 흐름, 데이터 흐름)."""
+    x, y, w, h = b
+    nodes, edges = p["nodes"], p.get("edges", [])
+    n = len(nodes)
+    ag = min(1.5, w * 0.13)
+    nw = (w - ag * (n - 1)) / n
+    my = y + h / 2
+    for i, nd in enumerate(nodes):
+        nx = x + i * (nw + ag)
+        hl = p.get("highlight") == i
+        body = nd.get("items") or nd.get("text")
+        bh = h if body else min(h, 1.1)
+        by = my - bh / 2
+        rect(s, nx, by, nw, bh, "paper", "accent" if hl else "ink",
+             lw=1.25 if hl else 0.75)
+        hh = 0.46 if body else bh
+        rect(s, nx, by, nw, hh, "accent" if hl else "ink")
+        text(s, (nx + 0.08, by, nw - 0.16, hh), nd["title"], 11.5, "paper", bold=True,
+             align="c", anchor="m", min_size=8, name="flow node")
+        if body:
+            text(s, (nx + 0.14, by + hh + 0.12, nw - 0.28, bh - hh - 0.2), body, 9.5,
+                 bullets="items" in nd, gap=2, name=nd["title"])
+        if i < n - 1:
+            e = edges[i] if i < len(edges) else ""
+            fwd, back = (e, None) if isinstance(e, str) else (e.get("label", ""), e.get("back"))
+            ax1, ax2 = nx + nw + 0.06, nx + nw + ag - 0.06
+            oy = 0.16 if back else 0
+            line(s, ax1, my - oy, ax2, my - oy, "accent", 1.5, arrow=True)
+            if fwd:
+                text(s, (ax1, my - oy - 0.5, ax2 - ax1, 0.45), fwd, 8.5, "accent", bold=True,
+                     align="c", anchor="b", line=1.0, min_size=7, name="edge")
+            if back:
+                line(s, ax2, my + oy, ax1, my + oy, "muted", 1.25, arrow=True)
+                text(s, (ax1, my + oy + 0.05, ax2 - ax1, 0.45), back, 8.5, "muted", bold=True,
+                     align="c", line=1.0, min_size=7, name="edge")
+
+
+def p_progress(s, b, p):
+    x, y, w, h = b
+    items = p["items"]
+    mx = p.get("max", 100)
+    rh = min(0.55, h / len(items))
+    lw = p.get("label_width", w * 0.32)
+    vw = 0.75
+    for i, it in enumerate(items):
+        ry = y + i * rh
+        hl = p.get("highlight") == i
+        text(s, (x, ry, lw - 0.12, rh), it["label"], 10.5, "ink", bold=hl, anchor="m",
+             min_size=8, name="progress label")
+        tw = w - lw - vw
+        rect(s, x + lw, ry + rh * 0.3, tw, rh * 0.4, "soft")
+        rect(s, x + lw, ry + rh * 0.3, tw * min(1, it["value"] / mx), rh * 0.4,
+             "accent" if hl else tint("ink", 0.35))
+        text(s, (x + w - vw + 0.1, ry, vw - 0.1, rh), it.get("display", f"{it['value']}%"),
+             11, "accent" if hl else "ink", bold=True, align="r", anchor="m", fit=False)
+
+
+def p_roadmap(s, b, p):
+    """Tracks (rows) × phases (columns) with item chips."""
+    x, y, w, h = b
+    phases, tracks = p["phases"], p["tracks"]
+    lw = p.get("label_width", 1.5)
+    pw = (w - lw) / len(phases)
+    hh = 0.46
+    hl = p.get("highlight")
+    if hl is not None:
+        rect(s, x + lw + hl * pw, y + hh, pw, h - hh, tint("accent", 0.94))
+    for i, ph in enumerate(phases):
+        sh = rect(s, x + lw + i * pw, y, pw - 0.02, hh, "accent" if hl == i else "ink",
+                  shape=MSO_SHAPE.PENTAGON if i == 0 else MSO_SHAPE.CHEVRON)
+        sh.adjustments[0] = 0.25
+        shape_text(sh, ph, 10.5, "paper", box=(pw - 0.5, hh))
+    th = (h - hh - 0.1) / len(tracks)
+    for r, t in enumerate(tracks):
+        ty = y + hh + 0.1 + r * th
+        rect(s, x, ty, lw - 0.1, th - 0.08, "soft")
+        text(s, (x + 0.08, ty, lw - 0.26, th - 0.08), t["name"], 10.5, "ink", bold=True,
+             align="c", anchor="m", min_size=8, name="track")
+        if r < len(tracks) - 1:
+            hline(s, x, ty + th - 0.04, w)
+        for i, cell in enumerate(t["cells"]):
+            items = [cell] if isinstance(cell, str) else cell
+            items = [c for c in items if c]
+            if not items:
+                continue
+            cg = 0.05
+            ch = min(0.4, (th - 0.2 - cg * (len(items) - 1)) / len(items))
+            for j, it in enumerate(items):
+                cy = ty + 0.04 + j * (ch + cg)
+                on = it.startswith("**")
+                chip = rect(s, x + lw + i * pw + 0.1, cy, pw - 0.2, ch,
+                            "accent" if on else "paper", None if on else "rule",
+                            MSO_SHAPE.ROUNDED_RECTANGLE)
+                chip.adjustments[0] = 0.2
+                shape_text(chip, plain(it), 9, "paper" if on else "ink", bold=on,
+                           box=(pw - 0.3, ch))
+
+
 PANELS = {
     "bullets": p_bullets, "callout": p_callout, "table": p_table, "chart": p_chart,
     "kpi": p_kpi, "cards": p_cards, "process": p_process, "timeline": p_timeline,
     "cycle": p_cycle, "stack": p_stack, "image": p_image, "label": p_label, "arrow": p_arrow,
+    "matrix": p_matrix, "pyramid": p_pyramid, "funnel": p_funnel, "tree": p_tree,
+    "house": p_house, "milestones": p_milestones, "profiles": p_profiles,
+    "numbered": p_numbered, "flow": p_flow, "progress": p_progress, "roadmap": p_roadmap,
 }
 FIXED_W = {"arrow": 0.35, "label": 0.5}
 
@@ -801,7 +1272,19 @@ def f_closing(s, d, deck):
         text(s, (0.9, 4.0, 11, 1.2), d["subtitle"], 14, tint("ink", 0.6))
 
 
-FULL = {"cover": f_cover, "divider": f_divider, "toc": f_toc, "closing": f_closing}
+def f_statement(s, d, deck):
+    rect(s, 0, 0, W, H, tint("accent", 0.95))
+    rect(s, 0.9, 2.45, 0.09, 2.2, "accent")
+    if d.get("kicker"):
+        text(s, (1.25, 1.9, 10, 0.4), d["kicker"], 13, "accent", bold=True, fit=False)
+    text(s, (1.25, 2.4, 11, 2.3), d["title"], 30, "ink", bold=True, anchor="m", line=1.15,
+         min_size=20, name="statement")
+    if d.get("subtitle"):
+        text(s, (1.25, 4.95, 11, 1.2), d["subtitle"], 14, "muted", name="statement sub")
+
+
+FULL = {"cover": f_cover, "divider": f_divider, "toc": f_toc, "statement": f_statement,
+        "closing": f_closing}
 
 
 # ------------------------------------------------------------------ build
