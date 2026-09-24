@@ -1,14 +1,16 @@
-# Mega PPT
+<h1><img src="gallery/mega-ppt.svg" alt="mega-ppt" width="220" /></h1>
 
-**[장표 갤러리 보기 →](https://codeblack-inc.github.io/mega-ppt/)**
+[장표 갤러리](https://codeblack-inc.github.io/mega-ppt/) · [mega 제품군](https://codeblack-inc.github.io/mega-bi/) · [브랜드 가이드와 로고](https://github.com/Codeblack-Inc/mega-bi)
 
 AI가 스토리라인을 설계하고, 슬라이드마다 패널(표·차트·카드·간트·구성도 등)을 조합해 편집 가능한 `.pptx`를 만드는 Claude Code / Codex 플러그인.
+
+mega-ppt는 [mega 오픈소스 제품군](https://codeblack-inc.github.io/mega-bi/)의 발표자료 도구다. 갤러리에는 공식 로고와 심벌을 사용하고, 기본 장표에는 [mega BI](https://github.com/Codeblack-Inc/mega-bi)의 잉크·페이퍼·coral 계열을 적용한다. 공식 coral은 `#F37055`이며, 장표의 작은 글자와 색면에는 대비를 위해 진한 coral `#B5452D`를 쓴다. 다른 색이 필요하면 `deck.json`의 `theme`에서 바꿀 수 있다.
 
 - **스토리라인**: 피라미드 원칙 + 액션 타이틀
 - **헤더 + 패널 격자**: 패널 32종(표·차트·콤보·폭포·KPI·카드·프로세스·간트·로드맵·SWOT·포지셔닝·벤·피라미드·퍼널·조직도·전략 체계도·BMC·아키텍처·스윔레인·타일맵·체크리스트·아이콘·이미지 프레임 등)을 중첩 격자로 조합한다
 - **한국식 장표 밀도**: 사업계획서·공공기관 보고서 수준(장당 300~800자)을 기준으로, 넘침과 빈 공간을 자동으로 감지해 경고한다
 - **이미지 장표**: 브라우저·노트북·휴대폰 프레임, 번호 주석, 사진 그리드, 사진 배경 표지·구분·전면 장표
-- **디자인 시스템**: 중립색과 강조색 1개, Pretendard, 테마 토큰으로 브랜드를 적용한다
+- **디자인 시스템**: mega 기본 테마와 추가 테마 3종, Pretendard, 테마 토큰으로 브랜드를 적용한다
 - **편집 가능**: 표와 차트가 모두 PowerPoint 네이티브라서 열어서 바로 수정할 수 있다
 - **시각 검수**: LibreOffice로 렌더링한 이미지를 AI가 직접 보고 고친다
 

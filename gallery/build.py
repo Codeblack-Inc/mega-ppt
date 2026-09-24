@@ -19,7 +19,10 @@ sys.path.insert(0, str(SKILL / "scripts"))
 from build_deck import FULL, WARN, build  # noqa: E402
 
 THEMES = {
-    "blue": {"name": "Blue", "theme": {}},
+    "mega": {"name": "Mega", "theme": {}},
+    "blue": {"name": "Blue", "theme": {"accent": "#2152E0", "ink": "#14213D",
+                                          "text": "#252C3A", "muted": "#5B6475",
+                                          "rule": "#D5DAE3", "soft": "#F3F5F9"}},
     "teal": {"name": "Teal · bar", "theme": {"accent": "#0E8A7E", "ink": "#0F2A2E",
                                             "title_style": "bar"}},
     "vermilion": {"name": "Vermilion", "theme": {"accent": "#E4572E", "ink": "#1E1E24",
@@ -74,8 +77,10 @@ for i, s in enumerate(deck["slides"], 1):
         "json": pretty(spec),
     })
 slides.sort(key=lambda x: (GROUPS.index(x["group"]) if x["group"] in GROUPS else 99, x["n"]))
-data = {"themes": [{"key": k, "name": t["name"], "accent": t["theme"].get("accent", "#2152E0")}
+data = {"themes": [{"key": k, "name": t["name"], "accent": t["theme"].get("accent", "#B5452D")}
                    for k, t in THEMES.items()], "slides": slides}
 (out / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 shutil.copy(Path(__file__).parent / "index.html", out / "index.html")
+shutil.copy(Path(__file__).parent / "mega-ppt.svg", out / "mega-ppt.svg")
+shutil.copy(Path(__file__).parent / "symbol.svg", out / "symbol.svg")
 print(f"gallery → {out} ({len(slides)} slides × {len(THEMES)} themes)")

@@ -3,20 +3,22 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Mega PPT · 장표 갤러리</title>
+<title>mega-ppt · 장표 갤러리</title>
 <meta name="description" content="AI가 스토리라인을 짜고 패널을 조합해 편집 가능한 PowerPoint 장표를 만듭니다. Claude Code · Codex 플러그인." />
+<meta name="theme-color" content="#F37055" />
+<link rel="icon" href="./symbol.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --paper: #f5f6f8;
+    --paper: #f6f5fa;
     --card: #ffffff;
-    --ink: #14213d;
-    --text: #2b3243;
-    --muted: #677084;
-    --rule: #e1e4ea;
-    --rule-strong: #c9ced8;
-    --accent: #2152e0;
+    --ink: #17152b;
+    --text: #2b293b;
+    --muted: #68657b;
+    --rule: #e4dff1;
+    --rule-strong: #cfc8df;
+    --accent: #b5452d;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --radius: 10px;
   }
@@ -33,16 +35,15 @@
   /* top bar */
   .top {
     position: sticky; top: 0; z-index: 10;
-    background: rgba(245, 246, 248, .9); backdrop-filter: blur(10px);
+    background: rgba(246, 245, 250, .9); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--rule);
   }
   .top-in {
     max-width: 1440px; margin: 0 auto; padding: 14px 24px;
     display: flex; align-items: center; gap: 16px;
   }
-  .brand { display: flex; align-items: baseline; gap: 10px; text-decoration: none; }
-  .brand b { font-size: 19px; font-weight: 800; color: var(--ink); letter-spacing: -.02em; }
-  .brand b i { font-style: normal; color: var(--accent); transition: color .2s; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand img { display: block; width: 140px; height: auto; }
   .brand span { font-size: 13px; color: var(--muted); }
   .top nav { margin-left: auto; display: flex; gap: 6px; }
   .top nav a {
@@ -84,7 +85,7 @@
     text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 14px; color: var(--text);
   }
   .item .no { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-  .item:hover { background: #eceef2; }
+  .item:hover { background: #eeeaf5; }
   .item[aria-current="true"] { background: var(--card); box-shadow: 0 0 0 1px var(--rule-strong); color: var(--ink); font-weight: 700; }
   .item[aria-current="true"] .no { color: var(--accent); }
 
@@ -92,12 +93,12 @@
   .bar {
     display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px;
   }
-  .seg { display: inline-flex; background: #e8eaef; border-radius: 9px; padding: 3px; }
+  .seg { display: inline-flex; background: #ece8f3; border-radius: 9px; padding: 3px; }
   .seg button {
     font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 7px; color: var(--muted);
     display: inline-flex; align-items: center; gap: 7px;
   }
-  .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(20,33,61,.12); }
+  .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(23,21,43,.12); }
   .dot { width: 9px; height: 9px; border-radius: 50%; }
   .nav { margin-left: auto; display: flex; align-items: center; gap: 6px; }
   .nav .count { font-family: var(--mono); font-size: 12.5px; color: var(--muted); min-width: 56px; text-align: center; }
@@ -109,7 +110,7 @@
 
   .frame {
     background: var(--card); border-radius: var(--radius); overflow: hidden;
-    box-shadow: 0 0 0 1px var(--rule), 0 12px 32px -12px rgba(20, 33, 61, .18);
+    box-shadow: 0 0 0 1px var(--rule), 0 12px 32px -12px rgba(23, 21, 43, .18);
     aspect-ratio: 16 / 9;
   }
   .frame img { width: 100%; height: 100%; display: block; object-fit: contain; }
@@ -122,7 +123,7 @@
     font-family: var(--mono); font-size: 12px; padding: 3px 8px; border-radius: 6px;
     background: color-mix(in srgb, var(--accent) 10%, white); color: var(--accent);
   }
-  .chips span.full { background: #eceef2; color: var(--muted); }
+  .chips span.full { background: #eeeaf5; color: var(--muted); }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .btn {
     font-size: 13.5px; font-weight: 700; padding: 9px 14px; border-radius: 8px; text-decoration: none;
@@ -130,26 +131,26 @@
   }
   .btn:hover { border-color: var(--ink); }
   .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
-  .btn.primary:hover { background: #22325a; }
+  .btn.primary:hover { background: #302c48; }
 
   pre.code {
-    margin-top: 14px; background: #10182b; color: #d7def0; border-radius: var(--radius);
+    margin-top: 14px; background: #17152b; color: #e8e3fa; border-radius: var(--radius);
     padding: 18px 20px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
     overflow: auto; max-height: 460px; tab-size: 2;
   }
-  pre.code .k { color: #9db6ff; }
+  pre.code .k { color: #c9bcff; }
   pre.code .s { color: #b9e3c6; }
-  pre.code .n { color: #ffc98b; }
+  pre.code .n { color: #ffc2af; }
 
   /* grid view */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
   .thumb { text-align: left; }
   .thumb img {
     width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 8px;
-    box-shadow: 0 0 0 1px var(--rule), 0 6px 16px -10px rgba(20, 33, 61, .3);
+    box-shadow: 0 0 0 1px var(--rule), 0 6px 16px -10px rgba(23, 21, 43, .3);
     transition: transform .15s, box-shadow .15s;
   }
-  .thumb:hover img { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--rule-strong), 0 10px 22px -10px rgba(20, 33, 61, .35); }
+  .thumb:hover img { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--rule-strong), 0 10px 22px -10px rgba(23, 21, 43, .35); }
   .thumb span { display: block; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
   .thumb span i { font-style: normal; font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-right: 6px; }
 
@@ -169,7 +170,7 @@
   .install h4 { font-size: 14px; color: var(--ink); margin: 16px 0 6px; }
   .install h4:first-of-type { margin-top: 0; }
   .install pre {
-    background: #f1f3f6; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px;
+    background: #f6f5fa; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px;
     font-family: var(--mono); font-size: 13px; overflow-x: auto; color: var(--ink);
   }
   .install p { margin-top: 14px; font-size: 14px; color: var(--muted); }
@@ -198,7 +199,7 @@
 <body>
 <header class="top">
   <div class="top-in">
-    <a class="brand" href="#"><b>Mega<i>PPT</i></b><span>장표 갤러리</span></a>
+    <a class="brand" href="#" aria-label="mega-ppt 갤러리 홈"><img src="./mega-ppt.svg" alt="" /><span>장표 갤러리</span></a>
     <nav>
       <a href="#install">설치</a>
       <a href="https://github.com/Codeblack-Inc/mega-ppt" target="_blank" rel="noopener">GitHub ↗</a>
@@ -269,7 +270,7 @@ codex plugin add mega-ppt@mega-ppt</pre>
     </div>
   </div>
 </section>
-<footer>Mega PPT · MIT License · 예시 장표의 수치와 기관명은 모두 가상입니다.</footer>
+<footer>mega-ppt · MIT License · 예시 장표의 수치와 기관명은 모두 가상입니다. · <a href="https://codeblack-inc.github.io/mega-bi/">mega 제품군</a> · <a href="https://github.com/Codeblack-Inc/mega-bi">브랜드 가이드</a></footer>
 
 <script>
 (async () => {

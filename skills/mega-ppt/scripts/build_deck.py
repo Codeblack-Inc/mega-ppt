@@ -28,12 +28,12 @@ from pptx.util import Inches, Pt
 THEME = {
     "font": "Pretendard",
     "paper": "#FFFFFF",
-    "ink": "#14213D",
-    "text": "#252C3A",
-    "muted": "#5B6475",
-    "rule": "#D5DAE3",
-    "soft": "#F3F5F9",
-    "accent": "#2152E0",
+    "ink": "#17152B",
+    "text": "#2B293B",
+    "muted": "#68657B",
+    "rule": "#DED9ED",
+    "soft": "#F6F5FA",
+    "accent": "#B5452D",
     "title_style": "line",  # panel titles: "line" | "bar"
 }
 W, H = 13.333, 7.5
@@ -282,7 +282,7 @@ def p_callout(s, b, p):
         rect(s, x, y, 0.06, h, "accent")
     text(s, (x + 0.25, y + 0.08, w - 0.4, h - 0.16), p["text"], p.get("size", 12.5),
          "paper" if dark else "ink", bold=True, anchor="m", align=p.get("align", "l"),
-         emph="#9DB6FF" if dark else "accent", name="callout")
+         emph=tint("accent", 0.55) if dark else "accent", name="callout")
 
 
 def p_table(s, b, p):
@@ -957,9 +957,9 @@ def p_house(s, b, p):
     roof = rect(s, x, y, w, rh, "ink", shape=MSO_SHAPE.TRAPEZOID)
     roof.adjustments[0] = w * 0.1 / rh
     text(s, (x + w * 0.15, y + 0.08, w * 0.7, 0.22), p.get("vision_label", "VISION"), 9,
-         "#9DB6FF", bold=True, align="c", fit=False)
+         tint("accent", 0.55), bold=True, align="c", fit=False)
     text(s, (x + w * 0.15, y + 0.28, w * 0.7, rh - 0.32), p["vision"], 14, "paper", bold=True,
-         align="c", anchor="m", min_size=10, emph="#9DB6FF", name="vision")
+         align="c", anchor="m", min_size=10, emph=tint("accent", 0.55), name="vision")
     cy = y + rh + 0.1
     goals = p.get("goals", [])
     if goals:
@@ -1855,7 +1855,7 @@ def f_toc(s, d, deck):
     items = d.get("items") or deck.get("sections", [])
     rect(s, 0, 0, 4.2, H, "ink")
     text(s, (0.9, 2.6, 3, 0.8), d.get("title", "목차"), 34, "paper", bold=True, fit=False)
-    text(s, (0.9, 3.45, 3, 0.4), "CONTENTS", 12, "#9DB6FF", bold=True, fit=False)
+    text(s, (0.9, 3.45, 3, 0.4), "CONTENTS", 12, tint("accent", 0.55), bold=True, fit=False)
     ncol = 1 if len(items) <= 6 else 2
     per = math.ceil(len(items) / ncol)
     cw = (W - 5.0 - 0.8 - 0.4 * (ncol - 1)) / ncol
@@ -1903,9 +1903,9 @@ def f_photo(s, d, deck):
     alpha(rect(s, px, 0, pw, H, "ink"), 0.86)
     tx = px + 0.7
     if d.get("kicker"):
-        text(s, (tx, 1.6, pw - 1.2, 0.35), d["kicker"], 12, "#9DB6FF", bold=True, fit=False)
+        text(s, (tx, 1.6, pw - 1.2, 0.35), d["kicker"], 12, tint("accent", 0.55), bold=True, fit=False)
     text(s, (tx, 2.05, pw - 1.2, 2.4), d["title"], 28, "paper", bold=True, line=1.1,
-         min_size=18, emph="#9DB6FF", name="photo title")
+         min_size=18, emph=tint("accent", 0.55), name="photo title")
     if d.get("subtitle"):
         text(s, (tx, 4.6, pw - 1.2, 1.6), d["subtitle"], 13, tint("ink", 0.7), name="photo sub")
     if d.get("caption"):
