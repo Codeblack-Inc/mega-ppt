@@ -1,0 +1,10 @@
+{
+  "name": "mega-ppt",
+  "interface": { "displayName": "Mega PPT" },
+  "plugins": [{
+    "name": "mega-ppt",
+    "source": { "source": "local", "path": "./" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+    "category": "Productivity"
+  }]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "mega-ppt",
+  "owner": { "name": "dr-coton" },
+  "metadata": { "description": "AI로 컨설팅급 PPT(.pptx)를 생성합니다. 스토리라인 설계 → 레이아웃 카탈로그에서 슬라이드별 레이아웃 선택 → 디자인 시스템이 적용된 편집 가능한 PowerPoint 파일 생성. 한국어 우선." },
+  "plugins": [{ "name": "mega-ppt", "source": "./" }]
+}

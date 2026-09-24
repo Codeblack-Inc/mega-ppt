@@ -1,0 +1,9 @@
+{
+  "name": "mega-ppt",
+  "description": "AI로 컨설팅급 PPT(.pptx)를 생성합니다. 스토리라인 설계 → 레이아웃 카탈로그에서 슬라이드별 레이아웃 선택 → 디자인 시스템이 적용된 편집 가능한 PowerPoint 파일 생성. 한국어 우선.",
+  "version": "0.1.0",
+  "author": { "name": "dr-coton", "url": "https://github.com/dr-coton" },
+  "repository": "https://github.com/dr-coton/mega-ppt",
+  "license": "MIT",
+  "keywords": ["pptx", "powerpoint", "presentation", "slides", "python-pptx", "korean"]
+}
