@@ -13,13 +13,13 @@ AI가 스토리라인을 설계하고, 레이아웃 카탈로그에서 슬라이
 
 **Claude Code**
 ```text
-/plugin marketplace add dr-coton/mega-ppt
+/plugin marketplace add Codeblack-Inc/mega-ppt
 /plugin install mega-ppt@mega-ppt
 ```
 
 **Codex**
 ```bash
-codex plugin marketplace add dr-coton/mega-ppt
+codex plugin marketplace add Codeblack-Inc/mega-ppt
 codex plugin add mega-ppt@mega-ppt
 ```
 
