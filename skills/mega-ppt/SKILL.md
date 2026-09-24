@@ -3,7 +3,7 @@ name: mega-ppt
 description: 전문적인 프레젠테이션(.pptx)을 생성한다. 사용자가 PPT, 슬라이드, 발표자료, 장표, 덱, 사업계획서, 제안서, 과제 발표자료, 보고서 슬라이드를 만들어 달라고 하거나 문서·데이터를 발표자료로 바꿔 달라고 할 때 사용. 스토리라인 설계 → 슬라이드마다 패널(표·차트·카드·프로세스·간트·구성도 등) 조합 → deck.json 작성 → python-pptx로 편집 가능한 PowerPoint 생성 → 렌더링 이미지로 시각 검수. 한국어 우선.
 license: MIT
 metadata:
-  version: "0.3"
+  version: "0.4"
 ---
 
 # Mega PPT
@@ -24,9 +24,11 @@ metadata:
 
 ### 3. 패널 설계 → [`references/layouts.md`](references/layouts.md)
 슬라이드마다 "이 헤드라인을 증명하려면 무엇을 보여야 하나?"를 묻고 패널을 고른다.
-- 숫자 추세는 `chart`, 다차원 비교는 `table`, 병렬 항목은 `cards`, 순서는 `process`, 일정은 `timeline`·`roadmap`, 시스템 구조는 `stack`, 조직은 `tree`, 전략 체계는 `house`, 환경 분석은 `matrix`, 시장 규모는 `funnel`을 쓴다. 전체 24종은 layouts.md에 있다.
+- 숫자 추세는 `chart`, 다차원 비교는 `table`, 병렬 항목은 `cards`, 순서는 `process`, 일정은 `timeline`·`roadmap`, 시스템 구조는 `stack`, 조직은 `tree`, 전략 체계는 `house`, 환경 분석은 `matrix`, 시장 규모는 `funnel`을 쓴다. 전체 32종은 layouts.md에 있다.
 - 같은 body 구성이 3장 연속되지 않게 한다.
 - 강조(`highlight`, `**강조**`)는 슬라이드당 1~2곳만 쓴다.
+- 사용자가 준 스크린샷·사진은 적극적으로 쓴다: 앱 화면은 `image`에 `frame`과 `callouts`, 여러 장은 `images`, 표지·구분 슬라이드는 `image` 배경, 전면 사진은 `photo`.
+- 아이콘(`icons`, `cards`·`diagram`의 `icon`)은 Lucide 이름을 쓴다. 이름이 없으면 경고가 나오니 `assets/icons.json`에서 찾는다.
 
 ### 4. deck.json 작성 → 빌드
 ```bash

@@ -1,5 +1,5 @@
 # /// script
-# dependencies = ["python-pptx>=1.0"]
+# dependencies = ["python-pptx>=1.0", "pymupdf"]
 # ///
 """Smoke test: sample.json + gallery/showcase.json use every panel/layout, build
 warning-free, round-trip.

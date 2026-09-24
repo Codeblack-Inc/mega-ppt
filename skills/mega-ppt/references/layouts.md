@@ -2,7 +2,7 @@
 
 슬라이드는 두 종류다.
 
-- **전면 슬라이드** (`layout`): `cover` · `toc` · `divider` · `statement` · `closing`
+- **전면 슬라이드** (`layout`): `cover` · `toc` · `divider` · `statement` · `photo` · `closing`
 - **본문 슬라이드** (`layout` 생략 = `content`): 헤더 + `body` 격자. 레이아웃이 고정되어 있지 않고 **패널을 조합**해 만든다.
 
 ## 덱 공통 필드
@@ -62,6 +62,14 @@
 | BM, 서비스·데이터 흐름 | `flow` |
 | 달성률, 진척도, 역량 수준 | `progress` |
 | 트랙 × 단계 로드맵 | `roadmap` |
+| 영역 안에 여러 패널 중첩 (고밀도 종합 장표) | `group` |
+| 핵심 기능·역량·가치 나열 (아이콘) | `icons` |
+| 역량·영역의 교집합 | `venn` |
+| 비즈니스 모델 | `canvas` |
+| 점검표, 자체 평가표(배점·별점) | `checklist` |
+| 시·도별 분포 | `map` |
+| 시스템 아키텍처, 데이터 흐름, 스윔레인 | `diagram` |
+| 스크린샷·사진 여러 장 | `images` |
 
 ### `bullets`
 `items`: 문자열 배열 · `style`: `"plain"`이면 불릿 없는 문단 · `size`
@@ -77,9 +85,10 @@
 키-값 개요 표는 `columns` 없이 `rowhead: true`.
 
 ### `chart`
-`kind`: `bar | hbar | stacked | line | pie | waterfall` · `categories` · `series: [{name, values}]` · `highlight`(단일 시리즈의 강조 카테고리) · `number_format`(예: `"0%"`, `"#,##0"`) · `unit`(우상단 "(단위: …)") · `labels`(기본 true = 값 레이블 표시, 축 숨김)
+`kind`: `bar | hbar | stacked | line | pie | waterfall | combo` · `categories` · `series: [{name, values}]` · `highlight`(단일 시리즈의 강조 카테고리) · `number_format`(예: `"0%"`, `"#,##0"`) · `unit`(우상단 "(단위: …)") · `labels`(기본 true = 값 레이블 표시, 축 숨김)
 - `waterfall`: 단일 시리즈의 증감값. `totals: [인덱스]`는 누계 막대(강조색)로 그린다. 음수는 감소로 표시
 - 선 차트에 시리즈가 여럿이면 끝점에만 값을 표시한다
+- `combo`: 막대 시리즈 + `"type": "line"` 시리즈(보조축). 시리즈별 `number_format`. 값이 없는 칸은 `null`
 
 ### `kpi`
 `items: [{value, label}]` · `highlight` · `direction`: `"column"`이면 세로 배치
@@ -100,8 +109,13 @@
 `layers: [{label, items[], highlight?}]` (위에서 아래로) · `label_width`
 
 ### `image`
-`src`(deck.json 기준 상대 경로) · `alt` · `caption`
-`src`가 없거나 파일이 없으면 점선 자리표시자를 그린다 → 사용자가 나중에 스크린샷을 넣는다.
+`src`(deck.json 기준 상대 경로) · `alt` · `caption` · `fit`(`cover` 기본 = 채우고 넘치는 부분 자름 | `contain`) · `crop`(`center` | `top`) · `border`
+- `frame`: `browser` | `laptop` | `tablet` | `phone` → 기기 프레임 안에 스크린샷을 넣는다 (상단 기준으로 자름)
+- `callouts: [{x, y, text?, box?: [w, h]}]` → 이미지 위 번호 마커(x·y는 이미지 기준 0~1). `box`는 해당 영역을 둥근 테두리로 강조. `text`가 있으면 오른쪽에 번호별 설명을 붙인다(`"제목\n설명"`). `legend_width`(기본 0.34)
+`src`가 없거나 파일이 없으면 아이콘이 있는 점선 자리표시자를 그린다 → 사용자가 나중에 스크린샷을 넣는다.
+
+### `images`
+`items: [{src, caption?, tag?, alt?}]` · `cols`(기본 최대 4) · `gap` · `crop` · `highlight`(태그 강조). 현장 사진, 시연 화면, 결과물 모음.
 
 ### `label`
 `text` · `highlight`. 세로로 긴 칸이면 글자를 세로로 쌓는다.
@@ -139,15 +153,44 @@
 ### `progress`
 `items: [{label, value, display?}]` · `max`(기본 100) · `label_width` · `highlight`
 
+### `group`
+`body`: 본문과 같은 격자(행 배열) · `gap`(기본 0.15). 패널 안에 패널을 넣는다. 제목(`title_style: "bar"`)을 단 group 3개를 나란히 두면 공공기관 보고서식 고밀도 장표가 된다.
+
+### `icons`
+`items: [{icon, title, text?}]` · `cols` · `align: "left"`(아이콘 옆 제목) · `style: "card"` · `highlight`
+아이콘 이름은 Lucide 2,118종(`assets/icons.json`의 키). 찾기: `grep -o '"[a-z0-9-]*shield[a-z0-9-]*"' $SKILL/assets/icons.json`. `cards` 항목에도 `icon`을 줄 수 있다.
+
+### `venn`
+`sets: [{title, items?}]` (2~3개) · `center`(교집합 라벨)
+
+### `canvas`
+비즈니스 모델 캔버스 9블록: `partners` `activities` `resources` `value` `relationships` `channels` `segments` `costs` `revenue` (각각 불릿 배열) · `highlight`(블록 키 또는 목록)
+
+### `checklist`
+- 점검표: `items: [{label, status: done|partial|todo|fail, note?}]`
+- 평가표: `items: [{label, score, max?(5), weight?, note?}]` → 점수 점(●○)으로 표시. `weight`가 있으면 배점 열과 종합 점수를 자동 계산
+- 공통: `columns`(헤더 덮어쓰기) · `widths` · `summary` · `highlight`
+
+### `map`
+`values: {시·도: 숫자}` (서울, 부산, 대구, 인천, 광주, 대전, 울산, 세종, 경기, 강원, 충북, 충남, 전북, 전남, 경북, 경남, 제주) · `unit` · `format`(기본 `"{:,}"`) · `highlight`(테두리 강조 목록). 17개 시·도 타일맵에 값의 크기를 색 농도로 표시한다.
+
+### `diagram`
+격자(`cols` × `rows`) 위에 자유 배치:
+- `zones: [{label, col, row, w, h, highlight?}]` — 점선 영역(내부망, 클라우드 등)
+- `nodes: [{id, label, sub?, icon?, col, row, w?, h?, height?, style: paper|accent|ink|soft}]`
+- `edges: [{from, to, label?, style: "dashed"?, both?, highlight?}]` — 겹치는 행/열이면 직선, 아니면 ㄱ자로 자동 연결
+- `lanes: [행위자...]` → 스윔레인. 레인마다 행 하나, `lane_width`
+
 ### `roadmap`
 `phases[]` · `tracks: [{name, cells: [str | [str]] (단계별)}]` · `highlight`(단계 열) · `label_width`. 칩 텍스트가 `**`로 시작하면 강조 칩이 된다.
 
 ## 전면 슬라이드
 
-- `cover`: `kicker`(사업명), `title`(`\n` 가능), `subtitle`, `org`, `author`, `date`
+- `cover`: `kicker`(사업명), `title`(`\n` 가능), `subtitle`, `org`, `author`, `date`, `image`(오른쪽 사진 패널)
 - `toc`: `items` (생략하면 `sections`)
-- `divider`: `no`("01"), `title`, `items`(하위 목차)
+- `divider`: `no`("01"), `title`, `items`(하위 목차), `image`(전면 사진 + 어두운 막)
 - `statement`: `kicker`, `title`(한두 문장, `**강조**`), `subtitle` — 핵심 주장을 크게 보여주는 전면 슬라이드
+- `photo`: `image`, `kicker`, `title`, `subtitle`, `caption`, `align`(`left`|`right` 반투명 패널 위치) — 전면 사진·화면 장표
 - `closing`: `title`, `subtitle`
 
 ## 자주 쓰는 조합
@@ -168,6 +211,13 @@
 | 시장 규모 | `[funnel, chart]` |
 | 예산 | `[table total+merge, chart waterfall]` |
 | 중간 점검 | `[progress, numbered]` |
+| 화면 설명 | `[image frame:laptop callouts]` |
+| 앱 소개 | `[image frame:phone w.8, icons align:left cols2 w2]` |
+| 작업 흐름 화면 | `[image frame:browser, arrow, image, arrow, image]` |
+| 시연 화면 모음 | `[images cols3]` |
+| 아키텍처 | `[diagram zones+nodes+edges]` |
+| 업무 프로세스 | `[diagram lanes]` |
+| 고밀도 종합 | `[group bar, group bar, group bar]` (각 group에 kpi·chart·table) |
 
 실제 사용 예는 갤러리(https://codeblack-inc.github.io/mega-ppt/)에서 장표별 deck.json으로 볼 수 있다.
 

@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["python-pptx>=1.0"]
+# dependencies = ["python-pptx>=1.0", "pymupdf"]
 # ///
 """deck.json → .pptx. Usage: uv run build_deck.py deck.json -o out.pptx
 
@@ -8,6 +8,7 @@ A content slide = header (kicker · headline · lead) + body grid of panels.
 Panels are plain functions in PANELS; full-bleed slides in FULL. Spec: references/layouts.md.
 """
 import argparse
+import io
 import json
 import math
 import re
@@ -223,16 +224,18 @@ def rect(s, x, y, w, h, fill=None, line=None, shape=MSO_SHAPE.RECTANGLE, lw=0.75
     return sh
 
 
-def line(s, x1, y1, x2, y2, color="rule", lw=0.75, arrow=False, dash=False):
+def line(s, x1, y1, x2, y2, color="rule", lw=0.75, arrow=False, dash=False, arrow_start=False):
     c = s.shapes.add_connector(1, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
     c._element.remove(c._element.find(qn("p:style")))
     c.line.color.rgb = rgb(color)
     c.line.width = Pt(lw)
     if dash:
         c.line.dash_style = 4
+    ln = c.line._get_or_add_ln()
+    if arrow_start:  # schema order: headEnd before tailEnd
+        etree.SubElement(ln, qn("a:headEnd"), type="triangle", w="med", len="med")
     if arrow:
-        etree.SubElement(c.line._get_or_add_ln(), qn("a:tailEnd"), type="triangle", w="med",
-                         len="med")
+        etree.SubElement(ln, qn("a:tailEnd"), type="triangle", w="med", len="med")
     return c
 
 
@@ -402,6 +405,8 @@ def p_chart(s, b, p):
     kind = p.get("kind", "bar")
     if kind == "waterfall":
         return _waterfall(s, (x, y, w, h), p)
+    if kind == "combo":
+        return _combo(s, (x, y, w, h), p)
     data = CategoryChartData()
     data.categories = p["categories"]
     for ser in p["series"]:
@@ -481,6 +486,85 @@ def p_chart(s, b, p):
         if p.get("number_format"):
             plot.data_labels.number_format = p["number_format"]
             plot.data_labels.number_format_is_linked = False
+
+
+def _combo(s, b, p):
+    """Bars on the primary axis + series with "type": "line" on a hidden secondary axis."""
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls
+    x, y, w, h = b
+    bars = [sr for sr in p["series"] if sr.get("type", "bar") != "line"]
+    lines = [sr for sr in p["series"] if sr.get("type") == "line"]
+    data = CategoryChartData()
+    data.categories = p["categories"]
+    for sr in bars + lines:
+        data.add_series(sr["name"], sr["values"])
+    ch = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(x), Inches(y), Inches(w),
+                            Inches(h), data).chart
+    plot_area = ch._chartSpace.chart.plotArea
+    bar = plot_area.find(qn("c:barChart"))
+    lc = parse_xml(f'<c:lineChart {nsdecls("c")}><c:grouping val="standard"/>'
+                   '<c:varyColors val="0"/></c:lineChart>')
+    for ser in bar.findall(qn("c:ser"))[len(bars):]:
+        bar.remove(ser)
+        inv = ser.find(qn("c:invertIfNegative"))
+        if inv is not None:
+            ser.remove(inv)
+        etree.SubElement(ser, qn("c:smooth"), val="0")
+        lc.append(ser)
+    for tag, v in (("c:marker", "1"), ("c:axId", "50000"), ("c:axId", "50001")):
+        etree.SubElement(lc, qn(tag), val=v)
+    bar.addnext(lc)
+    axes = [e for e in plot_area if e.tag in (qn("c:valAx"), qn("c:catAx"))]
+    axes[-1].addnext(parse_xml(
+        f'<c:catAx {nsdecls("c")}><c:axId val="50001"/><c:scaling><c:orientation val="minMax"/>'
+        '</c:scaling><c:delete val="1"/><c:axPos val="b"/><c:majorTickMark val="none"/>'
+        '<c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="50000"/>'
+        '<c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/>'
+        '<c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>'))
+    axes[-1].addnext(parse_xml(
+        f'<c:valAx {nsdecls("c")}><c:axId val="50000"/><c:scaling><c:orientation val="minMax"/>'
+        '</c:scaling><c:delete val="0"/><c:axPos val="r"/><c:numFmt formatCode="General" '
+        'sourceLinked="1"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/>'
+        '<c:tickLblPos val="none"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr>'
+        '<c:crossAx val="50001"/><c:crosses val="max"/><c:crossBetween val="between"/></c:valAx>'
+        .replace("<c:valAx ", f'<c:valAx {nsdecls("a")} ')))
+    ch.font.size, ch.font.name = Pt(9), T["font"]
+    ch.font.color.rgb = rgb("muted")
+    ch.has_title = False
+    ch.has_legend = True
+    ch.legend.position, ch.legend.include_in_layout = XL_LEGEND_POSITION.BOTTOM, False
+    ch.legend.font.size = Pt(9)
+    for va in plot_area.findall(qn("c:valAx")):  # by id: python-pptx may pick the secondary
+        secondary = va.find(qn("c:axId")).get("val") == "50000"
+        va.find(qn("c:delete")).set("val", "0" if secondary else "1")
+        grid = va.find(qn("c:majorGridlines"))
+        if grid is not None:
+            va.remove(grid)
+    ch.category_axis.format.line.color.rgb = rgb("rule")
+    ch.category_axis.tick_labels.font.size = Pt(9)
+    bar_plot, line_plot = ch.plots[0], ch.plots[1]
+    bar_plot.gap_width = 60
+    for i, (ser, spec) in enumerate(zip(bar_plot.series, bars)):
+        ser.format.fill.solid()
+        ser.format.fill.fore_color.rgb = rgb(tint("ink", 0.35) if i == 0 else GREYS[i % 4])
+    for ser, spec in zip(line_plot.series, lines):
+        ser.format.line.color.rgb = rgb("accent")
+        ser.format.line.width = Pt(2.5)
+        ser.marker.format.fill.solid()
+        ser.marker.format.fill.fore_color.rgb = rgb("accent")
+        ser.marker.format.line.color.rgb = rgb("paper")
+    for plot, specs, color in ((bar_plot, bars, "text"), (line_plot, lines, "accent")):
+        for ser, spec in zip(plot.series, specs):
+            dl = ser.data_labels
+            dl.show_value = True
+            dl.font.size, dl.font.bold = Pt(9), plot is line_plot
+            dl.font.color.rgb = rgb(color)
+            if spec.get("number_format"):
+                dl.number_format, dl.number_format_is_linked = spec["number_format"], False
+            if plot is line_plot:
+                from pptx.enum.chart import XL_LABEL_POSITION
+                dl.position = XL_LABEL_POSITION.ABOVE
 
 
 def _waterfall(s, b, p):
@@ -569,7 +653,10 @@ def p_cards(s, b, p):
         rect(s, cx, cy, cw, chh, "paper", "accent" if hl else "rule", lw=1 if hl else 0.75)
         rect(s, cx, cy, cw, th, "accent" if hl else "soft")
         tx = cx + 0.12
-        if numbered:
+        if it.get("icon"):
+            icon(s, it["icon"], cx + 0.11, cy + th / 2 - 0.13, 0.26, "paper" if hl else "accent")
+            tx = cx + 0.46
+        elif numbered:
             badge = rect(s, cx + 0.1, cy + th / 2 - 0.12, 0.24, 0.24, "paper" if hl else "accent",
                          shape=MSO_SHAPE.OVAL)
             shape_text(badge, i + 1, 8.5, "accent" if hl else "paper")
@@ -685,25 +772,6 @@ def p_stack(s, b, p):
             bx = rect(s, x + lw + 0.1 + j * (iw + ig), ly_y + 0.1, iw, lh - 0.2, "paper",
                       "accent" if hl else "rule")
             shape_text(bx, it, 9.5, "ink", bold=False, box=(iw - 0.12, lh - 0.24))
-
-
-def p_image(s, b, p):
-    x, y, w, h = b
-    cap = p.get("caption")
-    ih = h - (0.3 if cap else 0)
-    src = p.get("src") and (CTX["base"] / p["src"])
-    if src and src.exists():
-        pic = s.shapes.add_picture(str(src), Inches(x), Inches(y), width=Inches(w))
-        if pic.height > Inches(ih):
-            ratio = Inches(ih) / pic.height
-            pic.height, pic.width = Inches(ih), int(pic.width * ratio)
-        pic.left = int(Inches(x) + (Inches(w) - pic.width) / 2)
-    else:
-        ph = rect(s, x, y, w, ih, "soft", "rule")
-        ph.line.dash_style = 4
-        shape_text(ph, "[이미지] " + p.get("alt", "이미지를 넣어 주세요"), 9, "muted", bold=False)
-    if cap:
-        text(s, (x, y + ih + 0.06, w, 0.24), f"< {cap} >", 9, "muted", align="c", fit=False)
 
 
 def p_label(s, b, p):
@@ -1114,6 +1182,534 @@ def p_roadmap(s, b, p):
                            box=(pw - 0.3, ch))
 
 
+# ------------------------------------------------------------------ icons & images
+
+ICONS_PATH = Path(__file__).resolve().parent.parent / "assets/icons.json"
+_ICON = {}
+
+
+def icon(s, name, x, y, size, color="accent"):
+    """Lucide icon (assets/icons.json) rendered to a transparent PNG."""
+    import pymupdf
+    if "set" not in _ICON:
+        _ICON["set"] = json.loads(ICONS_PATH.read_text(encoding="utf-8"))
+    icons = _ICON["set"]
+    if name not in icons:
+        warn(f"unknown icon {name!r} — search the names in assets/icons.json")
+        name = "circle-help"
+    key = (name, col(color))
+    if key not in _ICON:
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" '
+               f'fill="none" stroke="{col(color)}" stroke-width="2" stroke-linecap="round" '
+               f'stroke-linejoin="round">{icons[name]}</svg>')
+        pix = pymupdf.open(stream=svg.encode(), filetype="svg")[0].get_pixmap(
+            matrix=pymupdf.Matrix(8, 8), alpha=True)
+        _ICON[key] = pix.tobytes("png")
+    return s.shapes.add_picture(io.BytesIO(_ICON[key]), Inches(x), Inches(y), Inches(size),
+                                Inches(size))
+
+
+def alpha(sh, a):
+    """Make a solid-filled shape translucent (a = opacity 0..1)."""
+    clr = sh._element.spPr.find(qn("a:solidFill")).find(qn("a:srgbClr"))
+    etree.SubElement(clr, qn("a:alpha"), val=str(int(a * 100000)))
+    return sh
+
+
+def _src(p):
+    src = p.get("src") and (CTX["base"] / p["src"])
+    return src if src and src.exists() else None
+
+
+def picture(s, src, x, y, w, h, crop="center"):
+    """Fill (x, y, w, h) with the image, cropping the overflow. crop: center | top."""
+    pic = s.shapes.add_picture(str(src), Inches(x), Inches(y), Inches(w), Inches(h))
+    iw, ih = pic.image.size
+    box, img = w / h, iw / ih
+    if img > box:  # too wide → trim sides
+        cut = (1 - box / img) / 2
+        pic.crop_left = pic.crop_right = cut
+    elif img < box:  # too tall → trim bottom (screenshots) or both ends (photos)
+        cut = 1 - img / box
+        if crop == "top":
+            pic.crop_bottom = cut
+        else:
+            pic.crop_top = pic.crop_bottom = cut / 2
+    return pic
+
+
+def placeholder(s, x, y, w, h, alt, dark=False):
+    ph = rect(s, x, y, w, h, "#2A3550" if dark else "soft", None if dark else "rule")
+    if not dark:
+        ph.line.dash_style = 4
+    d = min(0.5, w * 0.2, h * 0.3)
+    icon(s, "image", x + w / 2 - d / 2, y + h / 2 - d * 0.9, d, "muted")
+    text(s, (x + 0.1, y + h / 2 + d * 0.25, w - 0.2, 0.5), alt or "이미지를 넣어 주세요", 9,
+         "muted", align="c", fit=False)
+
+
+FRAME_RATIO = {"browser": None, "laptop": 16 / 10, "tablet": 4 / 3, "phone": 9 / 19.5}
+
+
+def _frame(s, b, kind, src, alt):
+    """Draw a device frame around the screenshot; returns the screen rect."""
+    x, y, w, h = b
+    if kind == "browser":
+        rect(s, x, y, w, h, "paper", "rule", lw=1)
+        rect(s, x, y, w, 0.3, "soft")
+        for i, c in enumerate(("#E8A39B", "#E9CF8C", "#A9D3A1")):
+            rect(s, x + 0.14 + i * 0.16, y + 0.1, 0.1, 0.1, c, shape=MSO_SHAPE.OVAL)
+        url = rect(s, x + 0.7, y + 0.06, min(3.2, w - 0.9), 0.18, "paper",
+                   shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        url.adjustments[0] = 0.5
+        scr = (x + 0.01, y + 0.3, w - 0.02, h - 0.31)
+    elif kind == "laptop":
+        base_h = h * 0.07
+        sw = min(w * 0.88, (h - base_h) * FRAME_RATIO["laptop"])
+        sh_ = sw / FRAME_RATIO["laptop"]
+        sx = x + (w - sw) / 2
+        sy = y + (h - base_h - sh_) / 2
+        body = rect(s, sx, sy, sw, sh_, "#1B2233", shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        body.adjustments[0] = 0.03
+        base = rect(s, sx - sw * 0.07, sy + sh_, sw * 1.14, base_h, "#C9CED8",
+                    shape=MSO_SHAPE.TRAPEZOID)
+        base.rotation = 180
+        bz = sw * 0.025
+        scr = (sx + bz, sy + bz, sw - 2 * bz, sh_ - 2 * bz * 1.3)
+    else:  # phone / tablet
+        r = FRAME_RATIO[kind]
+        fh = min(h, w / r)
+        fw = fh * r
+        fx, fy = x + (w - fw) / 2, y + (h - fh) / 2
+        body = rect(s, fx, fy, fw, fh, "#1B2233", shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        body.adjustments[0] = 0.12 if kind == "phone" else 0.05
+        bz = fw * (0.045 if kind == "phone" else 0.05)
+        scr = (fx + bz, fy + bz * (1.6 if kind == "phone" else 1), fw - 2 * bz,
+               fh - bz * (3.2 if kind == "phone" else 2))
+    if src:
+        picture(s, src, *scr, crop="top")
+    else:
+        placeholder(s, *scr, alt, dark=kind != "browser")
+    if kind == "phone":
+        notch = rect(s, scr[0] + scr[2] * 0.35, scr[1] + 0.04, scr[2] * 0.3, 0.07, "#1B2233",
+                     shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        notch.adjustments[0] = 0.5
+    return scr
+
+
+def p_image(s, b, p):
+    """Image (screenshot, photo, diagram) with optional device frame and numbered callouts."""
+    x, y, w, h = b
+    cap = p.get("caption")
+    callouts = p.get("callouts", [])
+    legend = callouts and any(c.get("text") for c in callouts)
+    lw = w * p.get("legend_width", 0.34) if legend else 0
+    iw, ih = w - lw - (0.25 if legend else 0), h - (0.32 if cap else 0)
+    src = _src(p)
+    frame = p.get("frame")
+    if frame:
+        scr = _frame(s, (x, y, iw, ih), frame, src, p.get("alt"))
+    elif src:
+        if p.get("fit") == "contain":
+            pic = s.shapes.add_picture(str(src), Inches(x), Inches(y))
+            k = min(iw / (pic.width / 914400), ih / (pic.height / 914400))
+            pic.width, pic.height = int(pic.width * k), int(pic.height * k)
+            pic.left = int(Inches(x) + (Inches(iw) - pic.width) / 2)
+            pic.top = int(Inches(y) + (Inches(ih) - pic.height) / 2)
+            scr = (pic.left / 914400, pic.top / 914400, pic.width / 914400, pic.height / 914400)
+        else:
+            picture(s, src, x, y, iw, ih, p.get("crop", "center"))
+            scr = (x, y, iw, ih)
+        if p.get("border", True):
+            rect(s, *scr, None, "rule")
+    else:
+        placeholder(s, x, y, iw, ih, p.get("alt"))
+        scr = (x, y, iw, ih)
+    for i, c in enumerate(callouts):
+        d = 0.3
+        m = rect(s, scr[0] + c["x"] * scr[2] - d / 2, scr[1] + c["y"] * scr[3] - d / 2, d, d,
+                 "accent", "paper", MSO_SHAPE.OVAL, lw=1.5)
+        shape_text(m, i + 1, 10, "paper")
+        if c.get("box"):  # highlight a region: [w, h] relative to the image
+            bw, bh = c["box"]
+            rr = rect(s, scr[0] + c["x"] * scr[2] - bw * scr[2] / 2,
+                      scr[1] + c["y"] * scr[3] - bh * scr[3] / 2, bw * scr[2], bh * scr[3],
+                      None, "accent", shape=MSO_SHAPE.ROUNDED_RECTANGLE, lw=2)
+            rr.adjustments[0] = 0.05
+            s.shapes._spTree.remove(m._element)
+            s.shapes._spTree.append(m._element)  # marker above its box
+    if legend:
+        lx = x + iw + 0.25
+        rows = [c for c in callouts if c.get("text")]
+        rh = min(1.1, ih / len(rows))
+        for i, c in enumerate(callouts):
+            if not c.get("text"):
+                continue
+            ly = y + i * rh
+            m = rect(s, lx, ly + 0.02, 0.26, 0.26, "accent", shape=MSO_SHAPE.OVAL)
+            shape_text(m, i + 1, 9, "paper")
+            title, body = (c["text"], None) if "\n" not in c["text"] else c["text"].split("\n", 1)
+            text(s, (lx + 0.38, ly, lw - 0.38, 0.3), title, 11, "ink", bold=True, anchor="m",
+                 min_size=8.5, name="callout title")
+            if body:
+                text(s, (lx + 0.38, ly + 0.32, lw - 0.38, rh - 0.4), body, 9.5, "muted",
+                     name="callout text")
+    if cap:
+        text(s, (x, y + ih + 0.08, iw, 0.24), f"< {cap} >", 9, "muted", align="c", fit=False)
+
+
+def p_images(s, b, p):
+    """Grid of photos / screenshots with captions."""
+    x, y, w, h = b
+    items = p["items"]
+    ncol = p.get("cols", min(len(items), 4))
+    nrow = math.ceil(len(items) / ncol)
+    g = p.get("gap", 0.12)
+    cw, chh = (w - g * (ncol - 1)) / ncol, (h - g * (nrow - 1)) / nrow
+    for i, it in enumerate(items):
+        cx, cy = x + (i % ncol) * (cw + g), y + (i // ncol) * (chh + g)
+        cap = it.get("caption")
+        ih = chh - (0.3 if cap else 0)
+        src = _src(it)
+        if src:
+            picture(s, src, cx, cy, cw, ih, it.get("crop", p.get("crop", "center")))
+            rect(s, cx, cy, cw, ih, None, "rule")
+        else:
+            placeholder(s, cx, cy, cw, ih, it.get("alt"))
+        if it.get("tag"):
+            tg = rect(s, cx + 0.08, cy + 0.08, text_w(it["tag"], 8.5, True) + 0.2, 0.24,
+                      "accent" if p.get("highlight") == i else "ink")
+            shape_text(tg, it["tag"], 8.5, "paper")
+        if cap:
+            text(s, (cx, cy + ih + 0.05, cw, 0.25), cap, 9, "text", align="c", anchor="m",
+                 min_size=7.5, name="image caption")
+
+
+# ------------------------------------------------------------------ more panels
+
+def p_group(s, b, p):
+    """Nested grid: a panel whose body is another grid of panels."""
+    grid(s, p["body"], b, p.get("gap", 0.15))
+
+
+def p_icons(s, b, p):
+    x, y, w, h = b
+    items = p["items"]
+    n = len(items)
+    ncol = p.get("cols", n if n <= 4 else math.ceil(n / 2))
+    nrow = math.ceil(n / ncol)
+    g = 0.18
+    cw, chh = (w - g * (ncol - 1)) / ncol, (h - g * (nrow - 1)) / nrow
+    left = p.get("align") == "left"
+    card = p.get("style") == "card"
+    for i, it in enumerate(items):
+        cx, cy = x + (i % ncol) * (cw + g), y + (i // ncol) * (chh + g)
+        hl = p.get("highlight") == i
+        if card:
+            rect(s, cx, cy, cw, chh, "paper", "accent" if hl else "rule")
+            cx, cy, cww, chh_ = cx + 0.16, cy + 0.16, cw - 0.32, chh - 0.32
+        else:
+            cww, chh_ = cw, chh
+        d = min(0.7, chh_ * 0.36, cww * 0.4)
+        ox = cx if left else cx + (cww - d) / 2
+        rect(s, ox, cy, d, d, "accent" if hl else tint("accent", 0.9), shape=MSO_SHAPE.OVAL)
+        icon(s, it["icon"], ox + d * 0.23, cy + d * 0.23, d * 0.54, "paper" if hl else "accent")
+        if left:
+            tx, tw = cx + d + 0.14, cww - d - 0.14
+            text(s, (tx, cy, tw, d), it["title"], 12, "accent" if hl else "ink", bold=True,
+                 anchor="m", min_size=9, name="icon title")
+            if it.get("text"):
+                text(s, (cx, cy + d + 0.1, cww, chh_ - d - 0.1), it["text"], 10, "muted",
+                     name=it["title"])
+        else:
+            text(s, (cx, cy + d + 0.1, cww, 0.32), it["title"], 12, "accent" if hl else "ink",
+                 bold=True, align="c", anchor="m", min_size=9, name="icon title")
+            if it.get("text"):
+                text(s, (cx + 0.05, cy + d + 0.46, cww - 0.1, chh_ - d - 0.46), it["text"], 10,
+                     "muted", align="c", name=it["title"])
+
+
+def p_venn(s, b, p):
+    x, y, w, h = b
+    sets = p["sets"]
+    n = len(sets)
+    cols = ["accent", tint("ink", 0.2), "#8A94A6"]
+    cx, cy = x + w / 2, y + h / 2
+    if n == 2:
+        r = min(h / 2, w / 3.3)
+        centers = [(cx - 0.62 * r, cy), (cx + 0.62 * r, cy)]
+        mid = (cx, cy)
+    else:
+        r = min(h / 3.05, w / 3.25)
+        cy += 0.04 * r
+        centers = [(cx - 0.58 * r, cy - 0.45 * r), (cx + 0.58 * r, cy - 0.45 * r),
+                   (cx, cy + 0.55 * r)]
+        mid = (cx, cy - 0.12 * r)
+    for (sx, sy), c in zip(centers, cols):
+        alpha(rect(s, sx - r, sy - r, 2 * r, 2 * r, c, shape=MSO_SHAPE.OVAL), 0.16)
+        rect(s, sx - r, sy - r, 2 * r, 2 * r, None, c, MSO_SHAPE.OVAL, lw=1.5)
+    for (sx, sy), c, st in zip(centers, cols, sets):
+        dx, dy = sx - mid[0], sy - mid[1]
+        k = math.hypot(dx, dy) or 1
+        lx, ly = sx + dx / k * r * 0.42, sy + dy / k * r * 0.42
+        bw = r * (0.85 if n == 2 else 0.95)
+        items = st.get("items", [])
+        th = 0.32 + (text_height(items, 9.5, bw, line=1.05, gap=1) if items else 0)
+        text(s, (lx - bw / 2, ly - th / 2, bw, 0.3), st["title"], 12.5,
+             "accent" if c == "accent" else "ink", bold=True, align="c", min_size=9,
+             name="venn title")
+        if items:
+            text(s, (lx - bw / 2, ly - th / 2 + 0.32, bw, th - 0.3), items, 9.5, "text",
+                 align="c", line=1.05, gap=1, min_size=7.5, name=st["title"])
+    if p.get("center"):
+        cw = r * (0.6 if n == 2 else 0.62)
+        text(s, (mid[0] - cw / 2, mid[1] - 0.35, cw, 0.7), p["center"], 11, "ink", bold=True,
+             align="c", anchor="m", line=1.05, min_size=8, name="venn center")
+
+
+BMC = [("partners", "핵심 파트너", "handshake"), ("activities", "핵심 활동", "zap"),
+       ("resources", "핵심 자원", "boxes"), ("value", "가치 제안", "gem"),
+       ("relationships", "고객 관계", "heart-handshake"), ("channels", "채널", "megaphone"),
+       ("segments", "고객 세그먼트", "users"), ("costs", "비용 구조", "receipt"),
+       ("revenue", "수익원", "banknote")]
+
+
+def p_canvas(s, b, p):
+    """Business Model Canvas (9 blocks)."""
+    x, y, w, h = b
+    g = 0.06
+    cw = (w - 4 * g) / 5
+    th = (h - g) * 0.66
+    bh = h - g - th
+    half = (th - g) / 2
+    col_x = [x + i * (cw + g) for i in range(5)]
+    pos = {"partners": (col_x[0], y, cw, th), "activities": (col_x[1], y, cw, half),
+           "resources": (col_x[1], y + half + g, cw, half), "value": (col_x[2], y, cw, th),
+           "relationships": (col_x[3], y, cw, half),
+           "channels": (col_x[3], y + half + g, cw, half), "segments": (col_x[4], y, cw, th),
+           "costs": (x, y + th + g, (w - g) / 2, bh),
+           "revenue": (x + (w + g) / 2, y + th + g, (w - g) / 2, bh)}
+    hl = p.get("highlight", [])
+    hl = [hl] if isinstance(hl, str) else hl
+    for key, label, ic in BMC:
+        bx, by, bw, bhh = pos[key]
+        on = key in hl
+        rect(s, bx, by, bw, bhh, tint("accent", 0.9) if on else "soft")
+        if on:
+            rect(s, bx, by, bw, 0.05, "accent")
+        icon(s, ic, bx + 0.12, by + 0.13, 0.22, "accent" if on else "ink")
+        text(s, (bx + 0.4, by + 0.1, bw - 0.5, 0.28), label, 10.5, "accent" if on else "ink",
+             bold=True, anchor="m", min_size=8, name=label)
+        if p.get(key):
+            text(s, (bx + 0.12, by + 0.5, bw - 0.24, bhh - 0.6), p[key], p.get("size", 9.5),
+                 bullets=True, gap=2, name=label)
+
+
+STATUS = {"done": ("circle-check", "accent", "완료"), "partial": ("circle-dot-dashed", "accent", "진행"),
+          "todo": ("circle", "muted", "미착수"), "fail": ("circle-x", "#D64545", "미흡")}
+
+
+def p_checklist(s, b, p):
+    """Checklist (status icons) or scorecard (rating dots, optional weights)."""
+    x, y, w, h = b
+    items = p["items"]
+    rating = any("score" in it for it in items)
+    weighted = any("weight" in it for it in items)
+    cols = p.get("columns") or (["평가 항목"] + (["배점"] if weighted else []) +
+                                (["점수", "근거"] if rating else ["상태", "비고"]))
+    rel = p.get("widths") or ([3.2] + ([0.8] if weighted else []) + ([1.8, 3] if rating else [1.1, 3]))
+    ws = [w * r / sum(rel) for r in rel]
+    xs = [x + sum(ws[:i]) for i in range(len(ws))]
+    hh = 0.36
+    rect(s, x, y, w, hh, "ink")
+    for cx, cw, c in zip(xs, ws, cols):
+        text(s, (cx + 0.1, y, cw - 0.2, hh), c, 10, "paper", bold=True, align="c", anchor="m",
+             fit=False)
+    summary = p.get("summary")
+    if weighted and rating and summary is None:
+        tot = sum(it.get("weight", 0) * it.get("score", 0) / it.get("max", 5) for it in items)
+        summary = f"종합 점수 **{tot:.1f}** / {sum(it.get('weight', 0) for it in items)}"
+    sh = 0.42 if summary else 0
+    rh = min(0.55, (h - hh - sh) / len(items))
+    for r, it in enumerate(items):
+        ry = y + hh + r * rh
+        hl = p.get("highlight") == r
+        if hl:
+            rect(s, x, ry, w, rh, tint("accent", 0.92))
+        hline(s, x, ry + rh, w)
+        text(s, (xs[0] + 0.12, ry, ws[0] - 0.2, rh), it["label"], 10, "ink", bold=hl,
+             anchor="m", min_size=8, name="check label")
+        c = 1
+        if weighted:
+            text(s, (xs[1], ry, ws[1], rh), str(it.get("weight", "")), 10, "text", align="c",
+                 anchor="m", fit=False)
+            c = 2
+        mx, mw = xs[c], ws[c]
+        if rating:
+            mxv = it.get("max", 5)
+            d = min(0.16, (mw - 0.7) / mxv - 0.05)
+            sx = mx + (mw - (mxv * (d + 0.05) + 0.45)) / 2
+            for k in range(mxv):
+                full = k + 1 <= it["score"]
+                rect(s, sx + k * (d + 0.05), ry + rh / 2 - d / 2, d, d,
+                     "accent" if full else "paper", "accent" if full else "rule",
+                     MSO_SHAPE.OVAL)
+            text(s, (sx + mxv * (d + 0.05) + 0.05, ry, 0.45, rh), f"{it['score']}", 10.5,
+                 "accent", bold=True, anchor="m", fit=False)
+        else:
+            st = it.get("status", "todo")
+            st = "done" if st is True else "todo" if st is False else st
+            ic, cl, lab = STATUS[st]
+            icon(s, ic, mx + mw / 2 - 0.42, ry + rh / 2 - 0.11, 0.22, cl)
+            text(s, (mx + mw / 2 - 0.15, ry, 0.7, rh), it.get("status_label", lab), 9.5, cl,
+                 bold=True, anchor="m", fit=False)
+        if it.get("note"):
+            text(s, (xs[c + 1] + 0.12, ry, ws[c + 1] - 0.2, rh), it["note"], 9.5, "muted",
+                 anchor="m", min_size=7.5, name="check note")
+    if summary:
+        sy = y + hh + len(items) * rh + 0.06
+        rect(s, x, sy, w, sh - 0.06, "soft")
+        text(s, (x + 0.15, sy, w - 0.3, sh - 0.06), summary, 11, "ink", bold=True, align="r",
+             anchor="m", fit=False)
+
+
+KOREA_TILES = {"서울": (1, 0), "강원": (2, 0), "인천": (0, 1), "경기": (1, 1), "충북": (2, 1),
+               "경북": (3, 1), "충남": (0, 2), "세종": (1, 2), "대전": (2, 2), "대구": (3, 2),
+               "전북": (0, 3), "광주": (1, 3), "경남": (2, 3), "울산": (3, 3), "전남": (1, 4),
+               "부산": (2, 4), "제주": (0, 5)}
+
+
+def p_map(s, b, p):
+    """South Korea tile map (17 시·도) coloured by value."""
+    x, y, w, h = b
+    vals = p.get("values", {})
+    fmt = p.get("format", "{:,}")
+    hl = set(p.get("highlight", []))
+    lg = 0.5
+    t = min(w / 4, (h - lg) / 6)
+    g = t * 0.06
+    ox, oy = x + (w - 4 * t) / 2, y + (h - lg - 6 * t) / 2
+    nums = [v for v in vals.values() if isinstance(v, (int, float))]
+    lo, hi = (min(nums), max(nums)) if nums else (0, 1)
+    for name, (c, r) in KOREA_TILES.items():
+        v = vals.get(name)
+        k = (v - lo) / ((hi - lo) or 1) if isinstance(v, (int, float)) else None
+        fill = "soft" if k is None else tint("accent", 0.9 - 0.8 * k)
+        tl = rect(s, ox + c * t + g / 2, oy + r * t + g / 2, t - g, t - g, fill,
+                  "ink" if name in hl else None, MSO_SHAPE.ROUNDED_RECTANGLE,
+                  lw=2.25 if name in hl else 0.75)
+        tl.adjustments[0] = 0.12
+        fg = "paper" if k is not None and k > 0.5 else "ink"
+        text(s, (ox + c * t, oy + r * t + t * 0.18, t, t * 0.32), name, min(11, t * 16), fg,
+             bold=True, align="c", anchor="m", fit=False)
+        if v is not None:
+            text(s, (ox + c * t, oy + r * t + t * 0.5, t, t * 0.3),
+                 fmt.format(v) if isinstance(v, (int, float)) else str(v), min(9.5, t * 13), fg,
+                 align="c", anchor="m", fit=False)
+    if nums:
+        ly = y + h - lg + 0.12
+        steps = 5
+        sw = min(0.45, w / 12)
+        lx = x + (w - steps * sw) / 2
+        text(s, (lx - 1.3, ly, 1.2, 0.2), fmt.format(lo), 8.5, "muted", align="r", fit=False)
+        for i in range(steps):
+            rect(s, lx + i * sw, ly + 0.03, sw, 0.14, tint("accent", 0.9 - 0.8 * i / (steps - 1)))
+        text(s, (lx + steps * sw + 0.1, ly, 1.6, 0.2),
+             f"{fmt.format(hi)} {p.get('unit', '')}".strip(), 8.5, "muted", fit=False)
+
+
+def _edge_point(n, side):
+    x, y, w, h = n
+    return {"l": (x, y + h / 2), "r": (x + w, y + h / 2), "t": (x + w / 2, y),
+            "b": (x + w / 2, y + h)}[side]
+
+
+def p_diagram(s, b, p):
+    """Free-form diagram on a cols×rows grid: zones, nodes and routed arrows. lanes → swimlane."""
+    x, y, w, h = b
+    lanes = p.get("lanes")
+    lw = p.get("lane_width", 1.0) if lanes else 0
+    rows = len(lanes) if lanes else p.get("rows", 3)
+    cols = p.get("cols", 4)
+    gx, gw = x + lw, w - lw
+    cw, rh = gw / cols, h / rows
+    if lanes:
+        for i, ln in enumerate(lanes):
+            ly = y + i * rh
+            rect(s, gx, ly, gw, rh, "soft" if i % 2 == 0 else "paper")
+            lab = rect(s, x, ly, lw - 0.04, rh - 0.03, "ink")
+            shape_text(lab, ln, 10, "paper", box=(lw - 0.15, rh - 0.1))
+            hline(s, x, ly + rh - 0.015, w, "rule", 0.5)
+    for z in p.get("zones", []):
+        zx, zy = gx + z["col"] * cw + 0.04, y + z["row"] * rh + 0.04
+        zw, zh = z.get("w", 1) * cw - 0.08, z.get("h", 1) * rh - 0.08
+        zr = rect(s, zx, zy, zw, zh, tint("accent", 0.94) if z.get("highlight") else "soft",
+                  "accent" if z.get("highlight") else "rule", lw=1)
+        zr.line.dash_style = 4
+        text(s, (zx + 0.1, zy + 0.05, zw - 0.2, 0.22), z["label"], 9, "accent"
+             if z.get("highlight") else "muted", bold=True, fit=False)
+    boxes = {}
+    pad_x, pad_top, pad_bot = 0.14, 0.3 if p.get("zones") else 0.14, 0.14
+    for nd in p["nodes"]:
+        nx = gx + nd["col"] * cw + pad_x
+        ny = y + nd["row"] * rh + pad_top
+        nw = nd.get("w", 1) * cw - 2 * pad_x
+        nh = nd.get("h", 1) * rh - pad_top - pad_bot
+        if nd.get("height"):  # fixed node height, centred in its cells
+            ny += (nh - nd["height"]) / 2
+            nh = nd["height"]
+        style = nd.get("style", "paper")
+        fill, fg, border = {"accent": ("accent", "paper", None), "ink": ("ink", "paper", None),
+                            "soft": ("soft", "ink", "rule")}.get(style, ("paper", "ink", "ink"))
+        bx = rect(s, nx, ny, nw, nh, fill, border, MSO_SHAPE.ROUNDED_RECTANGLE, lw=1)
+        bx.adjustments[0] = 0.08
+        tx = nx + 0.1
+        if nd.get("icon"):
+            d = min(0.34, nh * 0.5)
+            icon(s, nd["icon"], nx + 0.12, ny + nh / 2 - d / 2, d,
+                 "paper" if style in ("accent", "ink") else "accent")
+            tx = nx + 0.18 + d
+        if nd.get("sub"):
+            text(s, (tx, ny + 0.04, nx + nw - tx - 0.08, nh * 0.55 - 0.04), nd["label"], 10.5,
+                 fg, bold=True, align="l" if nd.get("icon") else "c", anchor="b", line=1.0,
+                 min_size=7.5, name="node")
+            text(s, (tx, ny + nh * 0.55, nx + nw - tx - 0.08, nh * 0.45 - 0.04), nd["sub"], 8.5,
+                 fg if style in ("accent", "ink") else "muted", align="l" if nd.get("icon")
+                 else "c", line=1.0, min_size=7, name="node sub")
+        else:
+            text(s, (tx, ny, nx + nw - tx - 0.08, nh), nd["label"], 10.5, fg, bold=True,
+                 align="l" if nd.get("icon") else "c", anchor="m", line=1.0, min_size=7.5,
+                 name="node")
+        boxes[nd["id"]] = (nx, ny, nw, nh)
+    for e in p.get("edges", []):
+        a, z = boxes[e["from"]], boxes[e["to"]]
+        c = "accent" if e.get("highlight") else "muted"
+        dash, both = e.get("style") == "dashed", e.get("both", False)
+        ov_y = min(a[1] + a[3], z[1] + z[3]) - max(a[1], z[1])
+        ov_x = min(a[0] + a[2], z[0] + z[2]) - max(a[0], z[0])
+        if ov_y > 0.15:  # side by side → straight horizontal
+            yy = max(a[1], z[1]) + ov_y / 2
+            x1, x2 = (a[0] + a[2], z[0]) if a[0] < z[0] else (a[0], z[0] + z[2])
+            pts = [(x1, yy), (x2, yy)]
+        elif ov_x > 0.15:  # stacked → straight vertical
+            xx = max(a[0], z[0]) + ov_x / 2
+            y1, y2 = (a[1] + a[3], z[1]) if a[1] < z[1] else (a[1], z[1] + z[3])
+            pts = [(xx, y1), (xx, y2)]
+        else:  # elbow: leave sideways, enter from top/bottom
+            p1 = _edge_point(a, "r" if z[0] > a[0] else "l")
+            p3 = _edge_point(z, "t" if z[1] > a[1] else "b")
+            pts = [p1, (p3[0], p1[1]), p3]
+        for i in range(len(pts) - 1):
+            line(s, *pts[i], *pts[i + 1], c, 1.5 if e.get("highlight") else 1.25,
+                 arrow=i == len(pts) - 2, dash=dash, arrow_start=both and i == 0)
+        if e.get("label"):
+            (ax, ay), (bx2, by2) = pts[0], pts[1]
+            mx, my = (ax + bx2) / 2, (ay + by2) / 2
+            lw_ = text_w(e["label"], 8.5, True) + 0.16
+            lb = rect(s, mx - lw_ / 2, my - 0.12, lw_, 0.24, "paper")
+            shape_text(lb, e["label"], 8.5, c)
+
+
 PANELS = {
     "bullets": p_bullets, "callout": p_callout, "table": p_table, "chart": p_chart,
     "kpi": p_kpi, "cards": p_cards, "process": p_process, "timeline": p_timeline,
@@ -1121,6 +1717,8 @@ PANELS = {
     "matrix": p_matrix, "pyramid": p_pyramid, "funnel": p_funnel, "tree": p_tree,
     "house": p_house, "milestones": p_milestones, "profiles": p_profiles,
     "numbered": p_numbered, "flow": p_flow, "progress": p_progress, "roadmap": p_roadmap,
+    "group": p_group, "icons": p_icons, "venn": p_venn, "canvas": p_canvas,
+    "checklist": p_checklist, "map": p_map, "diagram": p_diagram, "images": p_images,
 }
 FIXED_W = {"arrow": 0.35, "label": 0.5}
 
@@ -1148,26 +1746,26 @@ def panel(s, b, p):
     PANELS[p["type"]](s, (x, y, w, h), p)
 
 
-def grid(s, body, box):
+def grid(s, body, box, gap=GAP):
     """body = [row, ...]; row = [panel, ...] or {"h": weight, "cols": [...]}; panel "w" = weight."""
     x, y, w, h = box
     rows = [r if isinstance(r, dict) else {"cols": r} for r in body]
     hw = [r.get("h", 1) for r in rows]
-    avail = h - GAP * (len(rows) - 1)
+    avail = h - gap * (len(rows) - 1)
     cy = y
     for r, weight in zip(rows, hw):
         rh = avail * weight / sum(hw)
         cols = r["cols"]
         fixed = [FIXED_W[c["type"]] if "w" not in c and c["type"] in FIXED_W else None
                  for c in cols]
-        flex = w - GAP * (len(cols) - 1) - sum(f for f in fixed if f)
+        flex = w - gap * (len(cols) - 1) - sum(f for f in fixed if f)
         tot = sum(c.get("w", 1) for c, f in zip(cols, fixed) if f is None) or 1
         cx = x
         for c, f in zip(cols, fixed):
             cw = f if f else flex * c.get("w", 1) / tot
             panel(s, (cx, cy, cw, rh), c)
-            cx += cw + GAP
-        cy += rh + GAP
+            cx += cw + gap
+        cy += rh + gap
 
 
 # ------------------------------------------------------------------ slide chrome
@@ -1220,9 +1818,14 @@ def footer(s, d, deck, n):
 
 def f_cover(s, d, deck):
     rect(s, 0, 0, W, H, "paper")
-    rect(s, W - 2.6, 0, 2.6, H, tint("accent", 0.92))
-    rect(s, W - 2.6, 0, 0.08, H, "accent")
-    rect(s, W - 1.6, H - 1.6, 0.6, 0.6, "accent")
+    src = _src({"src": d.get("image")})
+    if src:  # photo panel on the right
+        picture(s, src, W - 4.6, 0, 4.6, H)
+        rect(s, W - 4.6, 0, 0.08, H, "accent")
+    else:
+        rect(s, W - 2.6, 0, 2.6, H, tint("accent", 0.92))
+        rect(s, W - 2.6, 0, 0.08, H, "accent")
+        rect(s, W - 1.6, H - 1.6, 0.6, 0.6, "accent")
     if d.get("kicker"):
         text(s, (0.9, 1.7, 9, 0.35), d["kicker"], 13, "accent", bold=True)
     text(s, (0.9, 2.1, 9.4, 1.9), d["title"], 34, "ink", bold=True, anchor="b", line=1.05,
@@ -1237,6 +1840,10 @@ def f_cover(s, d, deck):
 
 def f_divider(s, d, deck):
     rect(s, 0, 0, W, H, "ink")
+    src = _src({"src": d.get("image")})
+    if src:  # full-bleed photo under a dark veil
+        picture(s, src, 0, 0, W, H)
+        alpha(rect(s, 0, 0, W, H, "ink"), 0.72)
     if d.get("no"):
         text(s, (0.9, 2.0, 4, 1.0), d["no"], 54, "accent", bold=True, fit=False)
     text(s, (0.9, 3.1, 11.5, 1.0), d["title"], 32, "paper", bold=True, name="divider title")
@@ -1283,8 +1890,30 @@ def f_statement(s, d, deck):
         text(s, (1.25, 4.95, 11, 1.2), d["subtitle"], 14, "muted", name="statement sub")
 
 
+def f_photo(s, d, deck):
+    """Full-bleed image with a text veil — hero shots, site photos, product screens."""
+    src = _src({"src": d.get("image")})
+    if src:
+        picture(s, src, 0, 0, W, H, d.get("crop", "center"))
+    else:
+        placeholder(s, 0, 0, W, H, d.get("alt"), dark=True)
+    side = d.get("align", "left")
+    pw = W * 0.42
+    px = 0 if side == "left" else W - pw
+    alpha(rect(s, px, 0, pw, H, "ink"), 0.86)
+    tx = px + 0.7
+    if d.get("kicker"):
+        text(s, (tx, 1.6, pw - 1.2, 0.35), d["kicker"], 12, "#9DB6FF", bold=True, fit=False)
+    text(s, (tx, 2.05, pw - 1.2, 2.4), d["title"], 28, "paper", bold=True, line=1.1,
+         min_size=18, emph="#9DB6FF", name="photo title")
+    if d.get("subtitle"):
+        text(s, (tx, 4.6, pw - 1.2, 1.6), d["subtitle"], 13, tint("ink", 0.7), name="photo sub")
+    if d.get("caption"):
+        text(s, (tx, H - 0.8, pw - 1.2, 0.3), d["caption"], 9, tint("ink", 0.55), fit=False)
+
+
 FULL = {"cover": f_cover, "divider": f_divider, "toc": f_toc, "statement": f_statement,
-        "closing": f_closing}
+        "photo": f_photo, "closing": f_closing}
 
 
 # ------------------------------------------------------------------ build

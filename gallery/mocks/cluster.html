@@ -1,0 +1,10 @@
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+body{background:#0b1226;color:#dbe3f5}.w{padding:30px 38px;display:flex;flex-direction:column;gap:18px;height:100vh}
+h1{font-size:25px;font-weight:800}.c{background:#131d38;border:1px solid #223055;border-radius:12px;padding:16px 18px}
+.k{color:#8b98b8}.grid{display:grid;grid-template-columns:repeat(32,1fr);gap:5px}.grid i{aspect-ratio:1;border-radius:3px;display:block}
+</style></head><body><div class="w"><div style="display:flex;justify-content:space-between;align-items:center"><h1>GPU 클러스터 · 학습 작업 모니터</h1><span class="pill" style="background:#131d38;border-color:#223055;color:#9db6ff">GRPO 2차 · step 18,420 / 24,000</span></div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+<div class="c"><div class="k">가용 GPU</div><div class="v" style="color:#fff">248 / 256</div></div><div class="c"><div class="k">평균 사용률</div><div class="v" style="color:#7fa2ff">91.3%</div></div>
+<div class="c"><div class="k">보상 평균</div><div class="v" style="color:#fff">0.742</div></div><div class="c"><div class="k">예상 완료</div><div class="v" style="color:#fff">D-6</div></div></div>
+<div class="c" style="flex:1"><div class="k" style="margin-bottom:12px">노드별 GPU 사용률 (256)</div><div class="grid" id="g"></div></div></div>
+<script>const g=document.getElementById('g');for(let i=0;i<256;i++){const v=[3,77,140,201].includes(i)?-1:0.55+0.45*Math.abs(Math.sin(i*1.7)*Math.cos(i*.31));const e=document.createElement('i');e.style.background=v<0?'#5b2533':`rgba(79,125,255,${v})`;g.appendChild(e)}</script></body></html>

@@ -32,7 +32,7 @@ shutil.rmtree(out, ignore_errors=True)
 deck = json.loads((SKILL / "examples/sample.json").read_text(encoding="utf-8"))
 extra = json.loads((Path(__file__).parent / "showcase.json").read_text(encoding="utf-8"))
 deck["slides"] = deck["slides"][:-1] + extra["slides"] + deck["slides"][-1:]  # closing last
-GROUPS = ["기본 구성", "요약·메시지", "근거·데이터", "전략·구조", "실행·일정", "조직·인력",
+GROUPS = ["기본 구성", "요약·메시지", "근거·데이터", "전략·구조", "실행·일정", "조직·인력", "이미지·화면",
           "효과·요약"]
 
 for key, t in THEMES.items():
