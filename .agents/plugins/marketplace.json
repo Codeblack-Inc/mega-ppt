@@ -1,6 +1,6 @@
 {
   "name": "mega-ppt",
-  "interface": { "displayName": "Mega PPT" },
+  "interface": { "displayName": "mega-ppt" },
   "plugins": [{
     "name": "mega-ppt",
     "source": { "source": "local", "path": "./" },
