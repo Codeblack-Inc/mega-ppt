@@ -177,14 +177,14 @@ def _bullet(p, lvl, size, color):
 
 def text(s, box, content, size=BODY_SIZE, color="text", bold=False, align="l", anchor="t",
          bullets=False, fit=True, min_size=MIN_SIZE, line=1.15, gap=4, emph="accent",
-         name="text"):
+         name="text", wrap=True):
     """Text box with **emphasis** markup, hanging bullets ('- ' = level 2) and shrink-to-fit."""
     x, y, w, h = box
     if fit:
         size = fit_size(content, size, w, h, bullets, bold, min_size, line, gap, name)
     tb = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = tb.text_frame
-    tf.word_wrap = True
+    tf.word_wrap = wrap
     tf.vertical_anchor = ANCHOR[anchor]
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
     for i, (t, lvl) in enumerate(_paras(content, bullets)):
@@ -293,7 +293,8 @@ def p_table(s, b, p):
     if sum(rh) > h * 1.04:
         warn(f"table {p.get('title', '')!r} too tall ({sum(rh):.1f}in > {h:.1f}in) — cut rows")
     if p.get("stretch", True) and sum(rh) < h:  # fill the panel so grids line up
-        rh = [r * h / sum(rh) for r in rh] if sum(rh) > h * 0.7 else rh
+        k = min(h / sum(rh), 0.6 * nr / sum(rh))  # but keep rows ≤ ~0.6in on average
+        rh = [r * max(k, 1) for r in rh]
     gf = s.shapes.add_table(nr, nc, Inches(x), Inches(y), Inches(w), Inches(sum(rh)))
     tbl = gf.table
     tblPr = tbl._tbl.tblPr
@@ -306,6 +307,8 @@ def p_table(s, b, p):
     for i, cw in enumerate(cws):
         tbl.columns[i].width = Inches(cw)
     hl = p.get("highlight")
+    body = data[1:] if cols else data
+    left = [any(len(plain(r[c])) > 14 for r in body if c < len(r)) for c in range(nc)]
     for r, row in enumerate(data):
         tbl.rows[r].height = Inches(rh[r])
         head = bool(cols) and r == 0
@@ -329,8 +332,8 @@ def p_table(s, b, p):
             tf = cell.text_frame
             tf.word_wrap = True
             para = tf.paragraphs[0]
-            para.alignment = (PP_ALIGN.CENTER if head or (len(plain(val)) <= 14 and not rh_cell)
-                              else PP_ALIGN.LEFT)
+            para.alignment = (PP_ALIGN.LEFT if (rowhead and c == 0) or (left[c] and not head)
+                              else PP_ALIGN.CENTER)
             color = "paper" if head else "accent" if is_hl else "ink" if rh_cell else "text"
             for k, part in enumerate(EMPH.split(val)):
                 if part:
@@ -388,14 +391,20 @@ def p_chart(s, b, p):
     hl = p.get("highlight")
     plot = ch.plots[0]
     if kind == "pie":
-        for i, pt in enumerate(plot.series[0].points):
-            pt.format.fill.solid()
-            pt.format.fill.fore_color.rgb = rgb("accent" if i == (hl or 0) else GREYS[i % 4])
         plot.has_data_labels = True
-        plot.data_labels.font.size = Pt(9)
         plot.data_labels.number_format = p.get("number_format", "0%")
         plot.data_labels.number_format_is_linked = False
-        plot.data_labels.show_percentage = "number_format" not in p
+        pie_greys = ["#AEB6C4", "#CDD2DB", "#E3E6EC", "#98A1B1"]
+        for i, pt in enumerate(plot.series[0].points):
+            on = i == (hl or 0)
+            pt.format.fill.solid()
+            pt.format.fill.fore_color.rgb = rgb("accent" if on else pie_greys[i % 4])
+            f = pt.data_label.font
+            f.size, f.bold = Pt(10), True
+            f.color.rgb = rgb("paper" if on else "ink")
+            dl = pt.data_label._dLbl  # per-point label drops the plot numFmt; restate it
+            dl.insert(dl.index(dl.find(qn("c:txPr"))), etree.Element(
+                qn("c:numFmt"), formatCode=p.get("number_format", "0%"), sourceLinked="0"))
         return
     if kind != "line":
         plot.gap_width = 70
@@ -407,7 +416,10 @@ def p_chart(s, b, p):
     va.tick_labels.font.size = Pt(8)
     ch.category_axis.format.line.color.rgb = rgb("rule")
     ch.category_axis.tick_labels.font.size = Pt(9)
-    labels = p.get("labels", True)
+    if kind == "hbar":
+        ch.category_axis.reverse_order = True  # first category on top, like the source table
+    multiline = kind == "line" and len(p["series"]) > 1
+    labels = p.get("labels", True) and not multiline
     if labels:
         va.visible = False
         va.has_major_gridlines = False
@@ -421,6 +433,12 @@ def p_chart(s, b, p):
             ser.marker.format.fill.solid()
             ser.marker.format.fill.fore_color.rgb = rgb(c)
             ser.marker.format.line.color.rgb = rgb(c)
+            if multiline:  # label only the end point; overlapping labels are unreadable
+                dl = ser.points[len(p["categories"]) - 1].data_label
+                dl.has_text_frame = False
+                dl.show_value = True
+                dl.font.size, dl.font.bold = Pt(9), True
+                dl.font.color.rgb = rgb(c)
             continue
         ser.format.fill.solid()
         ser.format.fill.fore_color.rgb = rgb(GREYS[0] if single and hl is not None else c)
@@ -450,10 +468,11 @@ def p_kpi(s, b, p):
         hl = p.get("highlight") == i
         rect(s, cx, cy, cw, chh, "soft")
         rect(s, cx, cy, cw, 0.05, "accent" if hl else "rule")
-        vs = min(30, fit_size(it["value"], 30, cw - 0.3, chh * 0.5, bold=True, min_size=14,
-                              name="kpi value"))
+        vs = 30
+        while vs > 14 and (text_w(it["value"], vs, True) > (cw - 0.35) * 0.85 or vs / 72 * 1.3 > chh * 0.5):
+            vs -= 1
         text(s, (cx + 0.15, cy + 0.15, cw - 0.3, chh * 0.5), it["value"], vs,
-             "accent" if hl else "ink", bold=True, anchor="b", fit=False)
+             "accent" if hl else "ink", bold=True, anchor="b", fit=False, wrap=False)
         text(s, (cx + 0.15, cy + 0.2 + chh * 0.5, cw - 0.3, chh * 0.5 - 0.3), it["label"], 10,
              "muted", name="kpi label")
 

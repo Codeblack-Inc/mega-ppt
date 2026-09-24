@@ -1,6 +1,8 @@
 # Mega PPT
 
-AI가 스토리라인을 설계하고, 레이아웃 카탈로그에서 슬라이드별 레이아웃을 골라, 편집 가능한 `.pptx`를 만드는 Claude Code / Codex 플러그인.
+**[장표 갤러리 보기 →](https://codeblack-inc.github.io/mega-ppt/)**
+
+AI가 스토리라인을 설계하고, 슬라이드마다 패널(표·차트·카드·간트·구성도 등)을 조합해 편집 가능한 `.pptx`를 만드는 Claude Code / Codex 플러그인.
 
 - **스토리라인**: 피라미드 원칙 + 액션 타이틀
 - **헤더 + 패널 격자**: 슬라이드마다 패널 13종(bullets · callout · table · chart · kpi · cards · process · timeline · cycle · stack · image · label · arrow)을 조합하므로 레이아웃이 고정되지 않는다

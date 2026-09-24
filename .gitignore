@@ -5,3 +5,5 @@ out/
 *.pptx
 !skills/**/examples/*.pptx
 .DS_Store
+site/
+.claude/

@@ -1,0 +1,57 @@
+name: Gallery
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install LibreOffice and Pretendard
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libreoffice-impress fonts-noto-cjk
+          curl -fsSL -o /tmp/pretendard.zip \
+            https://github.com/orioncactus/pretendard/releases/download/v1.3.9/Pretendard-1.3.9.zip
+          mkdir -p ~/.local/share/fonts /tmp/pretendard
+          unzip -q /tmp/pretendard.zip -d /tmp/pretendard
+          find /tmp/pretendard -name 'Pretendard-*.otf' -exec cp {} ~/.local/share/fonts/ \;
+          fc-cache -f
+          fc-list | grep -c Pretendard
+
+      - name: Test
+        run: uv run tests/test_build.py
+
+      - name: Build gallery
+        run: uv run gallery/build.py site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
