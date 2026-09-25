@@ -3258,28 +3258,6 @@ def _fb_kv(items, label=""):
     return out
 
 
-def _fb_table(s, x, y, w, rows, rh=0.36, lw=1.4):
-    """Cover-style key-value table: head label cells, 1.25pt ink top and bottom rules."""
-    for i, (k, v) in enumerate(rows):
-        cy = y + i * rh
-        rect(s, x, cy, lw, rh, "head")
-        text(s, (x, cy, lw, rh), k, 10.5, "ink", bold=True, align="c", anchor="m", fit=False)
-        text(s, (x + lw + 0.15, cy, w - lw - 0.25, rh), v, 10.5, "text", anchor="m",
-             min_size=9, line=1.0, name="meta")
-        if i:
-            hline(s, x, cy, w, "line", HAIR)
-    hline(s, x, y, w, "ink", 1.25)
-    hline(s, x, y + rh * len(rows), w, "ink", 1.25)
-
-
-def _fb_rh(n, avail, cap, name):
-    """Row height for n key-value rows in avail inches: cap, shrunk to fit, floored at 0.28."""
-    rh = min(cap, avail / n)
-    if rh < 0.28:
-        warn(f"{name}: {n} rows do not fit above the bottom band — drop a row")
-    return max(rh, 0.28)
-
-
 def _fb_rule2(s, x, y, w):
     hline(s, x, y, w, "ink", 3.0)
     hline(s, x, y + 0.07, w, "ink", BORDER)
@@ -3311,7 +3289,7 @@ def _fb_pages(deck):
 
 
 def _fb_toc(deck, d=None):
-    """TOC rows as dicts {title, desc, items}, from the toc slide's items or deck sections.
+    """TOC rows as dicts {title, items}, from the toc slide's items or deck sections.
     A plain string row takes its sub-items from the divider with the matching no."""
     d = d or next((x for x in deck["slides"] if x.get("layout") == "toc"), {})
     divs = {int(x["no"]): x for x in reversed(deck["slides"])
@@ -3359,24 +3337,11 @@ def f_cover(s, d, deck):
     if d.get("subtitle"):
         text(s, (0.9, 4.32, tw, 0.75), d["subtitle"], 14, "muted", min_size=11,
              name="cover subtitle")
-    meta = d.get("meta")
-    rows = _fb_kv(meta) if meta else (
-        (_fb_kv(d["org"].split(" · "), "기관") if d.get("org") else [])
-        + (_fb_kv(d["author"].split(" · "), "연구책임자") if d.get("author") else [])
-        + ([["제출일", d["date"]]] if d.get("date") else []))
-    orgs = _fb_kv(d["org"].split(" · "), "기관") if meta and d.get("org") else []
-    if src:  # no room for the org lockup beside the table
-        rows, orgs = rows + orgs, []
-    y0, avail = 5.2, H - 0.42 - 0.12 - 5.2
-    if rows and not orgs:
-        mw = rw if src else 5.6
-        _fb_table(s, 0.9 if src else W - 0.9 - mw, y0, mw, rows,
-                  _fb_rh(len(rows), avail, 0.36, "cover meta"))
-    elif orgs:  # 주관·공동기관 beside the table, both blocks the same height
-        tot = min(max(0.36 * len(rows), 0.62 * len(orgs)), avail)
-        if rows:
-            _fb_table(s, W - 0.9 - 5.6, y0, 5.6, rows, _fb_rh(len(rows), tot, 1, "cover meta"))
-        ow, oh = W - 1.8 - (5.6 + 0.6 if rows else 0), tot / len(orgs)
+    orgs = _fb_kv(d["org"].split(" · "), "기관") if d.get("org") else []
+    y0 = 5.2
+    if orgs:  # 주관·공동기관 lockup under the subtitle
+        tot = min(0.62 * len(orgs), H - 0.42 - 0.12 - y0)
+        ow, oh = rw, tot / len(orgs)
         for i, (k, v) in enumerate(orgs):
             oy = y0 + i * oh
             if i:
@@ -3455,35 +3420,27 @@ def f_divider(s, d, deck):
     if src:  # the image takes the right side, no veil, no section map
         _fb_figure(s, d, deck, cur, src, 5.0, 0, W - 5.0, H)
         return
-    secs, pages = deck.get("sections", []), _fb_pages(deck)
+    secs = deck.get("sections", [])
     if not secs:
         return
     x0, x1 = 5.7, W - M
     hline(s, x0, 7.12, x1 - x0, "ink", BORDER)  # footer, white side only
     text(s, (x1 - 1, 7.16, 1, 0.2), str(CTX["slide"]), 8.5, "ink", bold=True, align="r",
          fit=False)
-    descs = [it.get("desc") for it in _fb_toc(deck)]
     n, y0 = len(secs), 1.14
-    rh = min(1.3 if any(descs) else 0.95, 5.8 / n)
+    rh = min(0.95, 5.8 / n)
     text(s, (x0, 0.6, 4, 0.3), "목 차", 13, "ink", bold=True, fit=False)  # level with deck title
     hline(s, x0, 1.0, x1 - x0, "ink", STRONG)
     cs = min(0.56, rh - 0.14)
     for j, nm in enumerate(secs):
         cy, me = y0 + j * rh, j == cur
-        desc = descs[j] if j < len(descs) and rh >= 0.9 else None
         c = rect(s, x0, cy + (rh - cs) / 2, cs, cs, "ink" if me else "soft",
                  None if me else "rule")
         shape_text(c, ROMAN[j] if j < len(ROMAN) else str(j + 1), 14, "paper" if me else "muted",
                    box=(cs, cs))
-        tx, ty = x0 + cs + 0.24, cy + (rh - (0.72 if desc else 0.4)) / 2
-        text(s, (tx, ty, x1 - tx - 1.3, 0.4), nm, 17, "ink" if me else "muted", bold=me,
-             anchor="m", fit=False)
-        if desc:
-            text(s, (tx, ty + 0.42, x1 - tx - 1.3, 0.3), desc, 11, "text" if me else "muted",
-                 anchor="m", min_size=9, name="divider map")
-        if j in pages:
-            text(s, (x1 - 1.2, ty, 1.2, 0.4), pages[j], 11, "ink" if me else "muted",
-                 bold=me, align="r", anchor="m", fit=False)
+        tx = x0 + cs + 0.24
+        text(s, (tx, cy + (rh - 0.4) / 2, x1 - tx, 0.4), nm, 17, "ink" if me else "muted",
+             bold=me, anchor="m", fit=False)
         hline(s, x0, cy + rh, x1 - x0, "ink" if me else "rule", STRONG if me else HAIR)
 
 
@@ -3497,7 +3454,7 @@ def f_toc(s, d, deck):
     ncol = 1 if len(items) <= 6 else 2
     per = math.ceil(len(items) / ncol)
     cw = (W - 2 * M - 0.4 * (ncol - 1)) / ncol
-    rh = min(1.35 if any(it.get("desc") or it.get("items") for it in items) else 0.95, 5.4 / per)
+    rh = min(1.1 if any(it.get("items") for it in items) else 0.95, 5.4 / per)
     for i, it in enumerate(items):
         cx, cy = M + (i // per) * (cw + 0.4), 1.45 + (i % per) * rh
         shape_text(rect(s, cx, cy + 0.12, 0.6, rh - 0.24, "ink"),
@@ -3513,10 +3470,6 @@ def f_toc(s, d, deck):
             text(s, (cx + cw - pw - 0.1, cy + 0.12, pw + 0.1, 0.44), pg, 12, "ink2", bold=True,
                  align="r", anchor="m", fit=False)
         sy = cy + 0.62
-        if it.get("desc") and rh > 0.8:
-            text(s, (tx, sy, cw - 2.0, 0.26), it["desc"], 11, "text", anchor="m", min_size=9,
-                 name="toc desc")
-            sy += 0.3
         if it.get("items") and cy + rh - 0.1 - sy > 0.2:
             text(s, (tx, sy, cw - 2.0, cy + rh - 0.1 - sy), " · ".join(it["items"]), 10.5,
                  "muted", min_size=9, name="toc sub-items")
@@ -3525,24 +3478,15 @@ def f_toc(s, d, deck):
 
 
 def f_closing(s, d, deck):
-    """감사합니다 + double rule + message, optional goal cells (points), contact table."""
+    """감사합니다 + double rule + message."""
     rect(s, 0, 0, W, H, "paper")
-    pts = d.get("points", [])[:4]
-    y, cw = (1.05, 8.0) if pts else (2.2, 6.0)  # points need the room: lift the stack
+    y, cw = 2.2, 6.0
     text(s, (0, y, W, 0.9), d.get("title", "감사합니다"), 32, "ink", bold=True, align="c",
          anchor="m", min_size=24, name="closing title")
     _fb_rule2(s, W / 2 - cw / 2, y + 1.1, cw)
     if d.get("subtitle"):
         text(s, (1.0, y + 1.3, W - 2.0, 0.5), d["subtitle"], 13, "text", align="c", anchor="m",
              min_size=11, name="closing sub")
-    y += 2.05
-    if pts:
-        _fb_points(s, pts, W / 2 - cw / 2, y, cw, 1.4, "목표")
-        y += 1.75
-    if d.get("items"):
-        rows = _fb_kv(d["items"])
-        _fb_table(s, W / 2 - cw / 2, y, cw, rows,
-                  _fb_rh(len(rows), H - 0.42 - 0.15 - y, 0.38, "closing items"))
     _fb_band(s, deck)
 
 
